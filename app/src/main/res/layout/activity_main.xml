@@ -5,79 +5,106 @@
     android:layout_height="match_parent"
     android:background="@color/bg_dark">
 
-    <!-- Full-screen OpenGL ES 2.0 3D House Viewport -->
+    <!-- Full-screen OpenGL ES 2.0 3D Viewport -->
     <com.houseviewer.app.gl.HouseGLSurfaceView
         android:id="@+id/glSurfaceView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Top App Bar (matches concept sketch: title + library/import/more icons) -->
+    <!-- Top Header Container: App Bar + Category Filter Bar -->
     <LinearLayout
-        android:id="@+id/topBar"
+        android:id="@+id/topHeaderContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
-        android:background="@color/surface_bar"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="12dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="12dp">
+        android:orientation="vertical">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/topBar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:background="@color/surface_bar"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="12dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="8dp">
 
-            <TextView
-                android:id="@+id/tvModelTitle"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:textColor="@color/text_primary"
-                android:textSize="18sp"
-                android:textStyle="bold" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/tvModelSubtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
+                <TextView
+                    android:id="@+id/tvModelTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvModelSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnModelList"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/cd_model_list"
+                android:padding="10dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_list" />
+
+            <ImageButton
+                android:id="@+id/btnImportModel"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/cd_import_model"
+                android:padding="10dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_add" />
+
+            <ImageButton
+                android:id="@+id/btnMore"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/cd_more_options"
+                android:padding="10dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_more" />
         </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/btnModelList"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_model_list"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_list" />
+        <!-- Category Filter Chips (All / House / Cathedral / Custom) -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#99161B22"
+            android:scrollbars="none">
 
-        <ImageButton
-            android:id="@+id/btnImportModel"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_import_model"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_add" />
+            <LinearLayout
+                android:id="@+id/categoryFilterBar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="4dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="10dp" />
+        </HorizontalScrollView>
 
-        <ImageButton
-            android:id="@+id/btnMore"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/cd_more_options"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_more" />
     </LinearLayout>
 
     <!-- Left '<' Navigation Arrow -->

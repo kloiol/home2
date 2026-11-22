@@ -46,11 +46,23 @@ class ModelRepository(private val context: Context) {
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("#")) continue
             val parts = line.split("|")
-            if (parts.size >= 4) {
+            if (parts.size >= 5) {
                 list.add(
                     HouseModel(
                         id = parts[0],
                         displayName = parts[1],
+                        category = parts[2].lowercase(),
+                        objPath = parts[3],
+                        mtlPath = parts[4].ifBlank { null },
+                        isBuiltIn = true
+                    )
+                )
+            } else if (parts.size == 4) {
+                list.add(
+                    HouseModel(
+                        id = parts[0],
+                        displayName = parts[1],
+                        category = "house",
                         objPath = parts[2],
                         mtlPath = parts[3].ifBlank { null },
                         isBuiltIn = true
@@ -72,10 +84,11 @@ class ModelRepository(private val context: Context) {
                 .replace('_', ' ')
                 .replace('-', ' ')
                 .trim()
-                .ifEmpty { "Imported House" }
+                .ifEmpty { "Imported Model" }
             HouseModel(
                 id = "custom_${file.name}",
                 displayName = cleanName,
+                category = "custom",
                 objPath = file.absolutePath,
                 mtlPath = if (mtlFile.exists()) mtlFile.absolutePath else null,
                 isBuiltIn = false
@@ -94,13 +107,17 @@ class ModelRepository(private val context: Context) {
             } ?: emptyMap()
             val objBytes = bundleEntries[model.objPath]
                 ?: throw IllegalStateException("Missing bundled model: ${model.objPath}")
-            ByteArrayInputStream(objBytes).use { ObjParser.parseObj(it, materials) }
+            ByteArrayInputStream(objBytes).use {
+                ObjParser.parseObj(it, materials, preserveWorldScale = true)
+            }
         } else {
             val materials = model.mtlPath?.let { path ->
                 runCatching { FileInputStream(path).use { ObjParser.parseMaterials(it) } }
                     .getOrDefault(emptyMap())
             } ?: emptyMap()
-            FileInputStream(model.objPath).use { ObjParser.parseObj(it, materials) }
+            FileInputStream(model.objPath).use {
+                ObjParser.parseObj(it, materials, preserveWorldScale = false)
+            }
         }
     }
 
@@ -111,7 +128,7 @@ class ModelRepository(private val context: Context) {
             .replace(Regex("[^A-Za-z0-9 _-]"), "")
             .trim()
             .replace(Regex("\\s+"), "_")
-            .ifEmpty { "House_${System.currentTimeMillis()}" }
+            .ifEmpty { "Model_${System.currentTimeMillis()}" }
 
         var targetFile = File(storageDir, "$safeBase.obj")
         var suffix = 2
@@ -130,6 +147,7 @@ class ModelRepository(private val context: Context) {
         return HouseModel(
             id = "custom_${targetFile.name}",
             displayName = displayName,
+            category = "custom",
             objPath = targetFile.absolutePath,
             mtlPath = null,
             isBuiltIn = false
@@ -155,6 +173,6 @@ class ModelRepository(private val context: Context) {
                     }
                 }
             }
-        return uri.lastPathSegment?.substringAfterLast('/') ?: "Imported_House.obj"
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "Imported_Model.obj"
     }
 }

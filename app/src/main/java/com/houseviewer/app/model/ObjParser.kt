@@ -36,7 +36,11 @@ object ObjParser {
         return materials
     }
 
-    fun parseObj(objStream: InputStream, materials: Map<String, FloatArray>): MeshData {
+    fun parseObj(
+        objStream: InputStream,
+        materials: Map<String, FloatArray>,
+        preserveWorldScale: Boolean = true
+    ): MeshData {
         val rawVerts = ArrayList<FloatArray>()
         val triIndices = ArrayList<IntArray>()
         val triColors = ArrayList<FloatArray>()
@@ -77,7 +81,6 @@ object ObjParser {
                             faceVerts[i - 1] = idx
                         }
                         if (valid) {
-                            // Fan-triangulate triangles, quads, and convex polygons
                             for (i in 1 until faceVerts.size - 1) {
                                 triIndices.add(intArrayOf(faceVerts[0], faceVerts[i], faceVerts[i + 1]))
                                 triColors.add(activeColor)
@@ -89,10 +92,9 @@ object ObjParser {
         }
 
         if (rawVerts.isEmpty() || triIndices.isEmpty()) {
-            return MeshData(FloatArray(0), FloatArray(0), FloatArray(0), 0)
+            return MeshData(FloatArray(0), FloatArray(0), FloatArray(0), 0, 2.2f)
         }
 
-        // Compute bounding box to center and normalize model size
         var minX = Float.POSITIVE_INFINITY
         var maxX = Float.NEGATIVE_INFINITY
         var minY = Float.POSITIVE_INFINITY
@@ -113,7 +115,12 @@ object ObjParser {
         val cy = (minY + maxY) * 0.5f
         val cz = (minZ + maxZ) * 0.5f
         val extent = max(maxX - minX, max(maxY - minY, maxZ - minZ))
-        val scale = if (extent > 1e-5f) 2.2f / extent else 1.0f
+        val scale = if (preserveWorldScale) {
+            1.0f
+        } else {
+            if (extent > 1e-5f) 2.2f / extent else 1.0f
+        }
+        val finalExtent = (extent * scale).coerceAtLeast(1.2f)
 
         val vertexCount = triIndices.size * 3
         val positions = FloatArray(vertexCount * 3)
@@ -143,7 +150,6 @@ object ObjParser {
             val p2y = (v2[1] - cy) * scale
             val p2z = (v2[2] - cz) * scale
 
-            // Flat triangle face normal
             val ux = p1x - p0x
             val uy = p1y - p0y
             val uz = p1z - p0z
@@ -173,6 +179,6 @@ object ObjParser {
             }
         }
 
-        return MeshData(positions, normals, colors, vertexCount)
+        return MeshData(positions, normals, colors, vertexCount, finalExtent)
     }
 }

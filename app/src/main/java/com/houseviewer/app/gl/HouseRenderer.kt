@@ -18,10 +18,13 @@ class HouseRenderer : GLSurfaceView.Renderer {
     var yawDegrees: Float = 38f
 
     @Volatile
-    var pitchDegrees: Float = 24f
+    var pitchDegrees: Float = 22f
 
     @Volatile
     var distance: Float = 4.2f
+
+    @Volatile
+    var defaultDistance: Float = 4.2f
 
     @Volatile
     var isSkyBackground: Boolean = false
@@ -55,12 +58,16 @@ class HouseRenderer : GLSurfaceView.Renderer {
         positionBuffer = toFloatBuffer(mesh.positions)
         normalBuffer = toFloatBuffer(mesh.normals)
         colorBuffer = toFloatBuffer(mesh.colors)
+
+        // Adapt default framing distance to true building scale (houses ~4.0, cathedrals ~10-13)
+        defaultDistance = (mesh.boundingExtent * 2.05f).coerceIn(3.8f, 13.5f)
+        distance = defaultDistance
     }
 
     fun resetCamera() {
         yawDegrees = 38f
-        pitchDegrees = 24f
-        distance = 4.2f
+        pitchDegrees = 22f
+        distance = defaultDistance
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -77,15 +84,13 @@ class HouseRenderer : GLSurfaceView.Renderer {
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
         val aspect = width.toFloat() / height.coerceAtLeast(1).toFloat()
-        Matrix.perspectiveM(projectionMatrix, 0, 42f, aspect, 0.1f, 50f)
+        Matrix.perspectiveM(projectionMatrix, 0, 42f, aspect, 0.1f, 120f)
     }
 
     override fun onDrawFrame(gl: GL10?) {
         if (isSkyBackground) {
-            // Bright sky blue matching the flight-sim game
             GLES20.glClearColor(0.50f, 0.77f, 0.96f, 1.0f)
         } else {
-            // Sleek dark studio canvas matching the concept sketch
             GLES20.glClearColor(0.05f, 0.067f, 0.09f, 1.0f)
         }
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
