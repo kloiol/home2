@@ -1,0 +1,80 @@
+builtin_01|German Village Cottage (Cream & Terracotta)|models/01_german_cottage_1.obj|models/01_german_cottage_1.mtl
+builtin_02|German Village Cottage (White & Slate)|models/02_german_cottage_2.obj|models/02_german_cottage_2.mtl
+builtin_03|German Village Cottage (Ochre & Red Timber)|models/03_german_cottage_3.obj|models/03_german_cottage_3.mtl
+builtin_04|Alpine A-Frame Chalet (Teal & Timber)|models/04_alpine_chalet_1.obj|models/04_alpine_chalet_1.mtl
+builtin_05|Alpine A-Frame Chalet (Dark Brown & Cream)|models/05_alpine_chalet_2.obj|models/05_alpine_chalet_2.mtl
+builtin_06|Alpine A-Frame Chalet (Slate & Cedar)|models/06_alpine_chalet_3.obj|models/06_alpine_chalet_3.mtl
+builtin_07|Quedlinburg Fachwerk (White & Gold Frieze)|models/07_quedlinburg_fachwerk_1.obj|models/07_quedlinburg_fachwerk_1.mtl
+builtin_08|Quedlinburg Fachwerk (Warm Cream & Red Timber)|models/08_quedlinburg_fachwerk_2.obj|models/08_quedlinburg_fachwerk_2.mtl
+builtin_09|Quedlinburg Fachwerk (Sage & Slate Roof)|models/09_quedlinburg_fachwerk_3.obj|models/09_quedlinburg_fachwerk_3.mtl
+builtin_10|Stade Brick Merchant (Brick & Green Trim)|models/10_stade_brick_1.obj|models/10_stade_brick_1.mtl
+builtin_11|Stade Brick Merchant (Dark Brick & Slate)|models/11_stade_brick_2.obj|models/11_stade_brick_2.mtl
+builtin_12|Stade Brick Merchant (Ochre Brick & Blue Trim)|models/12_stade_brick_3.obj|models/12_stade_brick_3.mtl
+builtin_13|Hanseatic Stepped-Gable (Ochre & White)|models/13_stepped_gable_1.obj|models/13_stepped_gable_1.mtl
+builtin_14|Hanseatic Stepped-Gable (Coral Rose & Cream)|models/14_stepped_gable_2.obj|models/14_stepped_gable_2.mtl
+builtin_15|Hanseatic Stepped-Gable (Hansa Blue & Slate)|models/15_stepped_gable_3.obj|models/15_stepped_gable_3.mtl
+builtin_16|Bavarian Timber Chalet (White & Warm Wood)|models/16_bavarian_chalet_1.obj|models/16_bavarian_chalet_1.mtl
+builtin_17|Bavarian Timber Chalet (Cream & Dark Oak)|models/17_bavarian_chalet_2.obj|models/17_bavarian_chalet_2.mtl
+builtin_18|Bavarian Timber Chalet (Alpine Terracotta Roof)|models/18_bavarian_chalet_3.obj|models/18_bavarian_chalet_3.mtl
+builtin_19|Black Forest Farmhouse (Classic Dark Shingle)|models/19_black_forest_1.obj|models/19_black_forest_1.mtl
+builtin_20|Black Forest Farmhouse (Red Tile & Cedar)|models/20_black_forest_2.obj|models/20_black_forest_2.mtl
+builtin_21|Black Forest Farmhouse (Weathered Slate & White)|models/21_black_forest_3.obj|models/21_black_forest_3.mtl
+builtin_22|Mosel Slate-Roof House (White & Red Timber)|models/22_mosel_house_1.obj|models/22_mosel_house_1.mtl
+builtin_23|Mosel Slate-Roof House (Cream & Dark Oak)|models/23_mosel_house_2.obj|models/23_mosel_house_2.mtl
+builtin_24|Mosel Slate-Roof House (Pale Yellow & Blue Slate)|models/24_mosel_house_3.obj|models/24_mosel_house_3.mtl
+builtin_25|North Frisian Thatched (Red Brick & Gold Thatch)|models/25_frisian_thatch_1.obj|models/25_frisian_thatch_1.mtl
+builtin_26|North Frisian Thatched (Whitewashed & Reed)|models/26_frisian_thatch_2.obj|models/26_frisian_thatch_2.mtl
+builtin_27|North Frisian Thatched (Dark Clinker & Blue Door)|models/27_frisian_thatch_3.obj|models/27_frisian_thatch_3.mtl
+builtin_28|Baroque Mansard House (Imperial Yellow & Slate)|models/28_baroque_mansard_1.obj|models/28_baroque_mansard_1.mtl
+builtin_29|Baroque Mansard House (Sage Green & Charcoal)|models/29_baroque_mansard_2.obj|models/29_baroque_mansard_2.mtl
+builtin_30|Baroque Mansard House (Dusty Peach & Terracotta)|models/30_baroque_mansard_3.obj|models/30_baroque_mansard_3.mtl
+builtin_31|Franconian Half-Hipped Inn (Peach & Red Tile)|models/31_franconian_inn_1.obj|models/31_franconian_inn_1.mtl
+builtin_32|Franconian Half-Hipped Inn (Ochre & Dark Roof)|models/32_franconian_inn_2.obj|models/32_franconian_inn_2.mtl
+builtin_33|Franconian Half-Hipped Inn (Mint Plaster & Terracotta)|models/33_franconian_inn_3.obj|models/33_franconian_inn_3.mtl
+builtin_34|Lubeck Brick Gothic (Deep Clinker & Slate)|models/34_brick_gothic_1.obj|models/34_brick_gothic_1.mtl
+builtin_35|Lubeck Brick Gothic (Bright Terracotta & Red)|models/35_brick_gothic_2.obj|models/35_brick_gothic_2.mtl
+builtin_36|Lubeck Brick Gothic (Whitewashed Gothic)|models/36_brick_gothic_3.obj|models/36_brick_gothic_3.mtl
+builtin_37|Kaliningrad Fishing Village (Cream & Red Tile)|models/37_kgd_fishing_village_1.obj|models/37_kgd_fishing_village_1.mtl
+builtin_38|Kaliningrad Fishing Village (Mustard & Dark Timber)|models/38_kgd_fishing_village_2.obj|models/38_kgd_fishing_village_2.mtl
+builtin_39|Kaliningrad Fishing Village (White & Slate Gables)|models/39_kgd_fishing_village_3.obj|models/39_kgd_fishing_village_3.mtl
+builtin_40|Kaliningrad Fishing Village (Warm Peach & Red Brick)|models/40_kgd_fishing_village_4.obj|models/40_kgd_fishing_village_4.mtl
+builtin_41|Kaliningrad Brick Townhouse (Red Brick & White Quoins)|models/41_kgd_brick_balcony_1.obj|models/41_kgd_brick_balcony_1.mtl
+builtin_42|Kaliningrad Brick Townhouse (Dark Clinker & Terracotta)|models/42_kgd_brick_balcony_2.obj|models/42_kgd_brick_balcony_2.mtl
+builtin_43|Kaliningrad Brick Townhouse (Warm Ochre Brick & Green Door)|models/43_kgd_brick_balcony_3.obj|models/43_kgd_brick_balcony_3.mtl
+builtin_44|Konigsberg Steep-Roof (Sand Plaster & Terracotta)|models/44_konigsberg_suburban_1.obj|models/44_konigsberg_suburban_1.mtl
+builtin_45|Konigsberg Steep-Roof (Pale Olive & Red Tile)|models/45_konigsberg_suburban_2.obj|models/45_konigsberg_suburban_2.mtl
+builtin_46|Konigsberg Steep-Roof (Warm Cream & Slate)|models/46_konigsberg_suburban_3.obj|models/46_konigsberg_suburban_3.mtl
+builtin_47|Amalienau Historic Villa (Butter Yellow & Terracotta)|models/47_amalienau_villa_1.obj|models/47_amalienau_villa_1.mtl
+builtin_48|Amalienau Historic Villa (Soft Ivory & Brown Roof)|models/48_amalienau_villa_2.obj|models/48_amalienau_villa_2.mtl
+builtin_49|Amalienau Historic Villa (Dusty Rose & Slate)|models/49_amalienau_villa_3.obj|models/49_amalienau_villa_3.mtl
+builtin_50|Kaliningrad Baroque House (Coral Pink & Terracotta)|models/50_kgd_baroque_1.obj|models/50_kgd_baroque_1.mtl
+builtin_51|Kaliningrad Baroque House (Mint Sage & Red Roof)|models/51_kgd_baroque_2.obj|models/51_kgd_baroque_2.mtl
+builtin_52|Kaliningrad Baroque House (Amber Gold & Slate)|models/52_kgd_baroque_3.obj|models/52_kgd_baroque_3.mtl
+builtin_53|Polish Karczma Cottage (White Plaster & Dark Shingle)|models/53_polish_karczma_1.obj|models/53_polish_karczma_1.mtl
+builtin_54|Polish Karczma Cottage (Cream & Terracotta Roof)|models/54_polish_karczma_2.obj|models/54_polish_karczma_2.mtl
+builtin_55|Polish Karczma Cottage (Warm Sand & Charcoal)|models/55_polish_karczma_3.obj|models/55_polish_karczma_3.mtl
+builtin_56|Polish Karczma Cottage (Pale Ochre & Cedar Shingle)|models/56_polish_karczma_4.obj|models/56_polish_karczma_4.mtl
+builtin_57|Polish Dworek Manor (Cream & Terracotta)|models/57_polish_dworek_1.obj|models/57_polish_dworek_1.mtl
+builtin_58|Polish Dworek Manor (Pure White & Dark Slate)|models/58_polish_dworek_2.obj|models/58_polish_dworek_2.mtl
+builtin_59|Polish Dworek Manor (Sunny Yellow & Brown Roof)|models/59_polish_dworek_3.obj|models/59_polish_dworek_3.mtl
+builtin_60|Polish Dworek Manor (Soft Peach & Burgundy Tile)|models/60_polish_dworek_4.obj|models/60_polish_dworek_4.mtl
+builtin_61|Polish Bay-Window Villa (Sand Beige & Charcoal)|models/61_polish_bay_villa_1.obj|models/61_polish_bay_villa_1.mtl
+builtin_62|Polish Bay-Window Villa (Ivory & Terracotta)|models/62_polish_bay_villa_2.obj|models/62_polish_bay_villa_2.mtl
+builtin_63|Polish Bay-Window Villa (Warm Gray & Deep Brown)|models/63_polish_bay_villa_3.obj|models/63_polish_bay_villa_3.mtl
+builtin_64|Polish Balcony Gable (Ochre Yellow & Terracotta)|models/64_polish_balcony_1.obj|models/64_polish_balcony_1.mtl
+builtin_65|Polish Balcony Gable (Cream & Charcoal Roof)|models/65_polish_balcony_2.obj|models/65_polish_balcony_2.mtl
+builtin_66|Polish Balcony Gable (Warm Peach & Red Roof)|models/66_polish_balcony_3.obj|models/66_polish_balcony_3.mtl
+builtin_67|Nida Curonian Wood House (Nida Blue & Terracotta)|models/67_nida_wood_1.obj|models/67_nida_wood_1.mtl
+builtin_68|Nida Curonian Wood House (Brown Timber & Reed Roof)|models/68_nida_wood_2.obj|models/68_nida_wood_2.mtl
+builtin_69|Nida Curonian Wood House (Deep Teal & Red Tile)|models/69_nida_wood_3.obj|models/69_nida_wood_3.mtl
+builtin_70|Nida Curonian Wood House (Red Ochre & Slate)|models/70_nida_wood_4.obj|models/70_nida_wood_4.mtl
+builtin_71|Aukstaitija Log Troba (Honey Log & Dark Shingle)|models/71_lithuanian_troba_1.obj|models/71_lithuanian_troba_1.mtl
+builtin_72|Aukstaitija Log Troba (Weathered Silver & Slate)|models/72_lithuanian_troba_2.obj|models/72_lithuanian_troba_2.mtl
+builtin_73|Aukstaitija Log Troba (Dark Pine & Terracotta)|models/73_lithuanian_troba_3.obj|models/73_lithuanian_troba_3.mtl
+builtin_74|Aukstaitija Log Troba (Ochre Painted & Green Roof)|models/74_lithuanian_troba_4.obj|models/74_lithuanian_troba_4.mtl
+builtin_75|Samogitian Wood House (Warm Timber & Slate)|models/75_samogitian_wood_1.obj|models/75_samogitian_wood_1.mtl
+builtin_76|Samogitian Wood House (Barn Red & Dark Shingle)|models/76_samogitian_wood_2.obj|models/76_samogitian_wood_2.mtl
+builtin_77|Samogitian Wood House (Mustard Wood & Green Door)|models/77_samogitian_wood_3.obj|models/77_samogitian_wood_3.mtl
+builtin_78|Vilnius Zverynas Villa (Sage Green & Slate)|models/78_vilnius_villa_1.obj|models/78_vilnius_villa_1.mtl
+builtin_79|Vilnius Zverynas Villa (Warm Ochre & Terracotta)|models/79_vilnius_villa_2.obj|models/79_vilnius_villa_2.mtl
+builtin_80|Vilnius Zverynas Villa (Baltic Blue & Charcoal)|models/80_vilnius_villa_3.obj|models/80_vilnius_villa_3.mtl
