@@ -29,7 +29,7 @@ class HouseGLSurfaceView @JvmOverloads constructor(
 
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 val nextDist = houseRenderer.distance / detector.scaleFactor
-                houseRenderer.distance = nextDist.coerceIn(1.8f, 10.0f)
+                houseRenderer.distance = nextDist.coerceIn(1.8f, 24.0f)
                 requestRender()
                 return true
             }
@@ -95,7 +95,6 @@ class HouseGLSurfaceView @JvmOverloads constructor(
                 previousY = event.y
             }
             MotionEvent.ACTION_POINTER_UP -> {
-                // Prevent jump when lifting one finger after pinch
                 val remainingIndex = if (event.actionIndex == 0) 1 else 0
                 if (remainingIndex < event.pointerCount) {
                     previousX = event.getX(remainingIndex)
