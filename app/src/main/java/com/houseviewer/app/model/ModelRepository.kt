@@ -3,16 +3,35 @@ package com.houseviewer.app.model
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import java.io.BufferedReader
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.InputStreamReader
+import java.util.zip.ZipInputStream
 
 class ModelRepository(private val context: Context) {
 
     private val storageDir: File = File(context.filesDir, "stored_models").apply {
         if (!exists()) mkdirs()
+    }
+
+    private val bundleEntries: Map<String, ByteArray> by lazy {
+        val map = HashMap<String, ByteArray>()
+        runCatching {
+            context.assets.open("models_bundle.zip").use { raw ->
+                ZipInputStream(raw).use { zis ->
+                    var entry = zis.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory) {
+                            map[entry.name] = zis.readBytes()
+                        }
+                        zis.closeEntry()
+                        entry = zis.nextEntry
+                    }
+                }
+            }
+        }
+        map
     }
 
     private val builtInModels: List<HouseModel> by lazy {
@@ -21,26 +40,22 @@ class ModelRepository(private val context: Context) {
 
     private fun loadBuiltInManifest(): List<HouseModel> {
         val list = mutableListOf<HouseModel>()
-        runCatching {
-            context.assets.open("models/manifest.txt").use { stream ->
-                BufferedReader(InputStreamReader(stream)).useLines { lines ->
-                    for (raw in lines) {
-                        val line = raw.trim()
-                        if (line.isEmpty() || line.startsWith("#")) continue
-                        val parts = line.split("|")
-                        if (parts.size >= 4) {
-                            list.add(
-                                HouseModel(
-                                    id = parts[0],
-                                    displayName = parts[1],
-                                    objPath = parts[2],
-                                    mtlPath = parts[3].ifBlank { null },
-                                    isBuiltIn = true
-                                )
-                            )
-                        }
-                    }
-                }
+        val manifestBytes = bundleEntries["manifest.txt"] ?: return list
+        val text = manifestBytes.toString(Charsets.UTF_8)
+        for (raw in text.lineSequence()) {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("#")) continue
+            val parts = line.split("|")
+            if (parts.size >= 4) {
+                list.add(
+                    HouseModel(
+                        id = parts[0],
+                        displayName = parts[1],
+                        objPath = parts[2],
+                        mtlPath = parts[3].ifBlank { null },
+                        isBuiltIn = true
+                    )
+                )
             }
         }
         return list
@@ -73,10 +88,13 @@ class ModelRepository(private val context: Context) {
     fun loadMesh(model: HouseModel): MeshData {
         return if (model.isBuiltIn) {
             val materials = model.mtlPath?.let { path ->
-                runCatching { context.assets.open(path).use { ObjParser.parseMaterials(it) } }
-                    .getOrDefault(emptyMap())
+                bundleEntries[path]?.let { bytes ->
+                    ByteArrayInputStream(bytes).use { ObjParser.parseMaterials(it) }
+                }
             } ?: emptyMap()
-            context.assets.open(model.objPath).use { ObjParser.parseObj(it, materials) }
+            val objBytes = bundleEntries[model.objPath]
+                ?: throw IllegalStateException("Missing bundled model: ${model.objPath}")
+            ByteArrayInputStream(objBytes).use { ObjParser.parseObj(it, materials) }
         } else {
             val materials = model.mtlPath?.let { path ->
                 runCatching { FileInputStream(path).use { ObjParser.parseMaterials(it) } }
