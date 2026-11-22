@@ -1,0 +1,9 @@
+<resources>
+    <color name="bg_dark">#0D1117</color>
+    <color name="surface_bar">#CC161B22</color>
+    <color name="surface_pill">#B31E2631</color>
+    <color name="accent_blue">#4EA8DE</color>
+    <color name="text_primary">#F0F4F8</color>
+    <color name="text_secondary">#A0AEC0</color>
+    <color name="stroke_subtle">#40FFFFFF</color>
+</resources>

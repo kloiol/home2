@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">House Viewer 3D</string>
+    <string name="hint_controls">Drag to rotate · Pinch to zoom · Double-tap to reset</string>
+    <string name="cd_prev_model">Previous house model</string>
+    <string name="cd_next_model">Next house model</string>
+    <string name="cd_import_model">Import 3D OBJ model</string>
+    <string name="cd_model_list">Stored models list</string>
+    <string name="cd_more_options">More options</string>
+    <string name="menu_toggle_bg">Toggle Sky / Dark Background</string>
+    <string name="menu_reset_camera">Reset Camera View</string>
+    <string name="menu_delete_current">Delete Current Custom Model</string>
+</resources>
