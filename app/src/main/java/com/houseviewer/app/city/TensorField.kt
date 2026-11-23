@@ -24,6 +24,14 @@ data class HighwayJunction(
     val streetHalfW: Float
 )
 
+data class ManhattanBlock(
+    val uMin: Float,
+    val uMax: Float,
+    val vMin: Float,
+    val vMax: Float,
+    val angleRad: Float
+)
+
 /**
  * 2D Symmetric Traceless Tensor Field that bends smoothly to conform to any
  * parametric CityPlate shape (Square, Hexagon, Semicircle, 5-Pointed Star, Rhombus)
@@ -47,6 +55,9 @@ class TensorField(
 
     private val fields = mutableListOf<BasisField>()
     private val refRadius = plate.maxRadius * plate.coverageLinearScale
+    var manhattanAngle: Float = 0f
+        private set
+    val manhattanBlocks: MutableList<ManhattanBlock> = mutableListOf()
 
     init {
         val baseAngle = rng.nextFloat() * Math.PI.toFloat()
@@ -85,6 +96,10 @@ class TensorField(
                     fields.add(BasisField(rx, rz, true, 0f, refRadius * 0.26f, 0.70f))
                 }
             }
+            TensorFieldStyle.NYC_MANHATTAN -> {
+                manhattanAngle = (rng.nextInt(4) * (Math.PI * 0.5)).toFloat() + (rng.nextFloat() - 0.5f) * 0.24f
+                fields.add(BasisField(0f, 0f, false, manhattanAngle, refRadius * 3.0f, 2.0f))
+            }
         }
     }
 
@@ -115,7 +130,7 @@ class TensorField(
         }
 
         // Gently bend tensor field along the plate's outer contour when near the shape border
-        if (style != TensorFieldStyle.SOVIET_MICRORAYON) {
+        if (style != TensorFieldStyle.SOVIET_MICRORAYON && style != TensorFieldStyle.NYC_MANHATTAN) {
             val (edgeTx, edgeTz, edgeDist) = plate.nearestEdgeTangentAndDist(x, z)
             val influenceBand = (plate.maxRadius * 0.28f).coerceIn(4.0f, 12.0f)
             if (edgeDist < influenceBand) {
@@ -171,6 +186,9 @@ class TensorField(
         highway: RoadPolyline?,
         junctionsOut: MutableList<HighwayJunction>
     ): List<RoadPolyline> {
+        if (style == TensorFieldStyle.NYC_MANHATTAN) {
+            return buildManhattanRoadNetwork(spacing)
+        }
         val roads = mutableListOf<RoadPolyline>()
         val majorPoints = mutableListOf<Vec2>()
         val minorPoints = mutableListOf<Vec2>()
@@ -238,6 +256,114 @@ class TensorField(
                 val smooth = smoothPolyline(raw, iterations = 2)
                 roads.add(RoadPolyline(smooth, isMajor = false))
                 minorPoints.addAll(smooth)
+            }
+        }
+
+        return roads
+    }
+
+
+    /**
+     * Generates an authentic Manhattan Commissioners' Plan orthogonal grid of broad
+     * parallel Avenues (major) and tighter perpendicular Cross-Streets (minor), clipped
+     * cleanly to any parametric CityPlate shape, and records every rectangular district block.
+     */
+    private fun buildManhattanRoadNetwork(spacing: Float): List<RoadPolyline> {
+        val roads = mutableListOf<RoadPolyline>()
+        manhattanBlocks.clear()
+
+        val aveStep = (spacing * 1.18f).coerceIn(6.8f, 12.2f)
+        val stStep = (spacing * 0.72f).coerceIn(4.8f, 8.2f)
+        val ux = cos(manhattanAngle)
+        val uz = sin(manhattanAngle)
+        val vx = -uz
+        val vz = ux
+        val maxSpan = plate.maxRadius * plate.coverageLinearScale + aveStep
+
+        val uCoords = mutableListOf<Float>()
+        val vCoords = mutableListOf<Float>()
+        val nU = (maxSpan / aveStep).toInt().coerceIn(2, 16)
+        val nV = (maxSpan / stStep).toInt().coerceIn(3, 22)
+        for (i in -nU..nU) uCoords.add(i * aveStep)
+        for (j in -nV..nV) vCoords.add(j * stStep)
+
+        val roadMargin = 1.35f
+        val sampleStep = 1.15f
+
+        // 1. Parallel broad Avenues (running along V, spaced along U)
+        for (u in uCoords) {
+            var currentSeg = mutableListOf<Vec2>()
+            var v = -maxSpan
+            while (v <= maxSpan + 0.01f) {
+                val wx = u * ux + v * vx
+                val wz = u * uz + v * vz
+                if (plate.containsInCoverage(wx, wz, roadMargin)) {
+                    currentSeg.add(Vec2(wx, wz))
+                } else if (currentSeg.size >= 2) {
+                    roads.add(RoadPolyline(currentSeg, isMajor = true))
+                    currentSeg = mutableListOf()
+                } else {
+                    currentSeg.clear()
+                }
+                v += sampleStep
+            }
+            if (currentSeg.size >= 2) {
+                roads.add(RoadPolyline(currentSeg, isMajor = true))
+            }
+        }
+
+        // 2. Parallel tighter Cross-Streets (running along U, spaced along V)
+        for (v in vCoords) {
+            var currentSeg = mutableListOf<Vec2>()
+            var u = -maxSpan
+            while (u <= maxSpan + 0.01f) {
+                val wx = u * ux + v * vx
+                val wz = u * uz + v * vz
+                if (plate.containsInCoverage(wx, wz, roadMargin)) {
+                    currentSeg.add(Vec2(wx, wz))
+                } else if (currentSeg.size >= 2) {
+                    roads.add(RoadPolyline(currentSeg, isMajor = false))
+                    currentSeg = mutableListOf()
+                } else {
+                    currentSeg.clear()
+                }
+                u += sampleStep
+            }
+            if (currentSeg.size >= 2) {
+                roads.add(RoadPolyline(currentSeg, isMajor = false))
+            }
+        }
+
+        // 3. Record every rectangular Manhattan district formed between adjacent avenues & streets
+        for (i in 0 until uCoords.size - 1) {
+            val u0 = uCoords[i]
+            val u1 = uCoords[i + 1]
+            val uc = (u0 + u1) * 0.5f
+            for (j in 0 until vCoords.size - 1) {
+                val v0 = vCoords[j]
+                val v1 = vCoords[j + 1]
+                val vc = (v0 + v1) * 0.5f
+                val cx = uc * ux + vc * vx
+                val cz = uc * uz + vc * vz
+                // Keep block if center or any inner quadrant lies inside the plate coverage zone
+                var inside = plate.containsInCoverage(cx, cz, 0.8f)
+                if (!inside) {
+                    val testPts = arrayOf(
+                        Pair(u0 + 1.0f, v0 + 1.0f), Pair(u1 - 1.0f, v0 + 1.0f),
+                        Pair(u0 + 1.0f, v1 - 1.0f), Pair(u1 - 1.0f, v1 - 1.0f)
+                    )
+                    for ((tu, tv) in testPts) {
+                        val tx = tu * ux + tv * vx
+                        val tz = tu * uz + tv * vz
+                        if (plate.containsInCoverage(tx, tz, 0.8f)) {
+                            inside = true
+                            break
+                        }
+                    }
+                }
+                if (inside) {
+                    manhattanBlocks.add(ManhattanBlock(u0, u1, v0, v1, manhattanAngle))
+                }
             }
         }
 
