@@ -89,6 +89,8 @@ object CityGenerator {
         val euBusModels = allModels.filter { it.category == "eu_bus" }
         val khtIndModels = allModels.filter { it.category == "kht_ind" }
         val khtBusModels = allModels.filter { it.category == "kht_bus" }
+        val khtScootModels = allModels.filter { it.category == "kht_scoot" }
+        val khtGraffModels = allModels.filter { it.category == "kht_graff" }
 
         // Strictly ONE consistent lamp post model per seed
         val chosenLampMesh: MeshData? = if (lampModels.isNotEmpty()) {
@@ -430,6 +432,118 @@ object CityGenerator {
                 footprints.add(PlacedFootprint(bx, bz, radius))
                 khtBusPositions.add(Vec2(bx, bz))
                 placedKhtBus++
+            }
+        }
+
+        // 6d. Exclusively in Soviet Microrayon, place lined-up e-scooters (Kht scoot) curbside & graffiti walls (Kht graff)
+        if (isSoviet && khtScootModels.isNotEmpty()) {
+            val desiredScoot = (plate.radius / 5.5f).toInt().coerceIn(4, 12)
+            val scootPositions = mutableListOf<Vec2>()
+            val minScootSepSq = 6.5f * 6.5f
+            var placedScoot = 0
+            for (road in roads) {
+                if (placedScoot >= desiredScoot) break
+                if (road.isSpur || road.isHighway) continue
+                val pts = road.points
+                if (pts.size < 4) continue
+                val sampleIdx = (pts.size / 3).coerceIn(1, pts.size - 2)
+                val p0 = pts[sampleIdx - 1]
+                val p1 = pts[sampleIdx]
+                val dx = p1.x - p0.x; val dz = p1.z - p0.z
+                val len = hypot(dx, dz)
+                if (len < 0.25f) continue
+                val nx = -dz / len; val nz = dx / len
+                val side = if (rng.nextBoolean()) 1f else -1f
+                val roadHalfW = if (road.isMajor) 0.72f else 0.50f
+                val sx = (p0.x + p1.x) * 0.5f + nx * side * (roadHalfW + 0.72f)
+                val sz = (p0.z + p1.z) * 0.5f + nz * side * (roadHalfW + 0.72f)
+                val model = khtScootModels[rng.nextInt(khtScootModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.52f + 0.20f
+                if (!plate.containsInCoverage(sx, sz, radius + 0.3f)) continue
+                if (isInsideAnyRoadSurface(sx, sz, roads)) continue
+                if (collides(sx, sz, radius, footprints)) continue
+                var tooClose = false
+                for (sp in scootPositions) {
+                    val sdx = sx - sp.x; val sdz = sz - sp.z
+                    if (sdx * sdx + sdz * sdz < minScootSepSq) { tooClose = true; break }
+                }
+                if (tooClose) continue
+                val yaw = atan2(-side * nx, -side * nz)
+                placements.add(PlacedBuilding(mesh, sx, 0.0f, sz, yaw, 1.0f))
+                footprints.add(PlacedFootprint(sx, sz, radius))
+                scootPositions.add(Vec2(sx, sz))
+                placedScoot++
+            }
+            var scAttempts = 0
+            while (placedScoot < desiredScoot && scAttempts < desiredScoot * 16) {
+                scAttempts++
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = 1.8f, rng = rng)
+                val model = khtScootModels[rng.nextInt(khtScootModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.52f + 0.22f
+                if (!plate.containsInCoverage(pt.x, pt.z, radius + 0.3f)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, radius + 0.20f)) continue
+                if (collides(pt.x, pt.z, radius, footprints)) continue
+                var tooClose = false
+                for (sp in scootPositions) {
+                    val sdx = pt.x - sp.x; val sdz = pt.z - sp.z
+                    if (sdx * sdx + sdz * sdz < minScootSepSq) { tooClose = true; break }
+                }
+                if (tooClose) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
+                placements.add(PlacedBuilding(mesh, pt.x, 0.0f, pt.z, atan2(dir.x, dir.z), 1.0f))
+                footprints.add(PlacedFootprint(pt.x, pt.z, radius))
+                scootPositions.add(pt)
+                placedScoot++
+            }
+        }
+
+        if (isSoviet && khtGraffModels.isNotEmpty()) {
+            val desiredGraff = (plate.radius / 6.5f).toInt().coerceIn(3, 9)
+            val graffPositions = mutableListOf<Vec2>()
+            val minGraffSepSq = 7.5f * 7.5f
+            var placedGraff = 0
+            for ((lx, lz, yaw) in lotCandidates) {
+                if (placedGraff >= desiredGraff) break
+                val model = khtGraffModels[rng.nextInt(khtGraffModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.54f + 0.30f
+                if (!plate.containsInCoverage(lx, lz, radius + 0.35f)) continue
+                if (isNearRoadSegments(lx, lz, roads, radius + 0.25f)) continue
+                if (collides(lx, lz, radius, footprints)) continue
+                var tooClose = false
+                for (gp in graffPositions) {
+                    val gdx = lx - gp.x; val gdz = lz - gp.z
+                    if (gdx * gdx + gdz * gdz < minGraffSepSq) { tooClose = true; break }
+                }
+                if (tooClose) continue
+                placements.add(PlacedBuilding(mesh, lx, 0.0f, lz, yaw, 1.0f))
+                footprints.add(PlacedFootprint(lx, lz, radius))
+                graffPositions.add(Vec2(lx, lz))
+                placedGraff++
+            }
+            var grAttempts = 0
+            while (placedGraff < desiredGraff && grAttempts < desiredGraff * 18) {
+                grAttempts++
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = 2.0f, rng = rng)
+                val model = khtGraffModels[rng.nextInt(khtGraffModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.54f + 0.30f
+                if (!plate.containsInCoverage(pt.x, pt.z, radius + 0.35f)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, radius + 0.25f)) continue
+                if (collides(pt.x, pt.z, radius, footprints)) continue
+                var tooClose = false
+                for (gp in graffPositions) {
+                    val gdx = pt.x - gp.x; val gdz = pt.z - gp.z
+                    if (gdx * gdx + gdz * gdz < minGraffSepSq) { tooClose = true; break }
+                }
+                if (tooClose) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
+                placements.add(PlacedBuilding(mesh, pt.x, 0.0f, pt.z, atan2(dir.x, dir.z), 1.0f))
+                footprints.add(PlacedFootprint(pt.x, pt.z, radius))
+                graffPositions.add(pt)
+                placedGraff++
             }
         }
 

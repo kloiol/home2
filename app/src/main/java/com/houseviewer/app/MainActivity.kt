@@ -483,7 +483,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshModelsAndFilters(keepModelId: String?) {
         allModels = repository.listModels()
-        val categories = linkedSetOf(CATEGORY_ALL, "house", "cathedral", "khrushchevka", "lamp_post", "clutter_khr", "eu_ind", "eu_bus", "kht_ind", "kht_bus")
+        val categories = linkedSetOf(CATEGORY_ALL, "house", "cathedral", "khrushchevka", "lamp_post", "clutter_khr", "eu_ind", "eu_bus", "kht_ind", "kht_bus", "kht_scoot", "kht_graff")
         for (m in allModels) {
             categories.add(m.category)
         }
@@ -653,6 +653,8 @@ class MainActivity : AppCompatActivity() {
             "eu_bus" -> "EU bus"
             "kht_ind" -> "Kht ind"
             "kht_bus" -> "Kht bus"
+            "kht_scoot" -> "Kht scoot"
+            "kht_graff" -> "Kht graff"
             "custom" -> "Custom"
             else -> category.replaceFirstChar { it.uppercase() }
         }
