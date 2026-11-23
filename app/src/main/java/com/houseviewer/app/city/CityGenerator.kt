@@ -1014,8 +1014,8 @@ object CityGenerator {
         }
         val yTop = 0.04f
         val sr = 0.62f; val sg = 0.63f; val sb = 0.65f
-        addTri(posOut, normOut, colOut, c0x, yTop, c0z, c2x, yTop, c2z, c1x, yTop, c1z, 0f, 1f, 0f, sr, sg, sb)
-        addTri(posOut, normOut, colOut, c0x, yTop, c0z, c3x, yTop, c3z, c2x, yTop, c2z, 0f, 1f, 0f, sr, sg, sb)
+        appendTri(posOut, normOut, colOut, c0x, yTop, c0z, c2x, yTop, c2z, c1x, yTop, c1z, 0f, 1f, 0f, sr, sg, sb)
+        appendTri(posOut, normOut, colOut, c0x, yTop, c0z, c3x, yTop, c3z, c2x, yTop, c2z, 0f, 1f, 0f, sr, sg, sb)
     }
 
     private fun appendPolygonPlate(
