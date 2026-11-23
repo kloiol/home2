@@ -4,6 +4,8 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -12,12 +14,13 @@ data class Vec2(val x: Float, val z: Float)
 data class RoadPolyline(
     val points: List<Vec2>,
     val isMajor: Boolean,
-    val isSpur: Boolean = false
+    val isSpur: Boolean = false,
+    val isHighway: Boolean = false
 )
 
 /**
  * 2D Symmetric Traceless Tensor Field for procedural urban & village road networks
- * with RK4 streamline integration and polyline smoothing for clean continuous curves.
+ * with RK4 streamline integration, polyline smoothing, and beltway/boundary clipping.
  */
 class TensorField(
     private val halfExtent: Float,
@@ -61,7 +64,6 @@ class TensorField(
                 fields.add(BasisField(halfExtent * 0.45f, halfExtent * 0.35f, false, q2Angle, halfExtent * 0.85f, 0.9f))
             }
             TensorFieldStyle.VILLAGE_FIELDS -> {
-                // Clean gently curving rural grid at the village heart with slight organic bend
                 fields.add(BasisField(0f, 0f, false, baseAngle, halfExtent * 1.6f, 1.25f))
                 fields.add(BasisField(halfExtent * 0.6f, -halfExtent * 0.5f, false, baseAngle + 0.22f, halfExtent * 0.9f, 0.45f))
             }
@@ -105,30 +107,100 @@ class TensorField(
         return Vec2(cos(angle).toFloat(), sin(angle).toFloat())
     }
 
-    fun traceRoadNetwork(spacing: Float): List<RoadPolyline> {
+    /**
+     * Checks whether (x, z) is strictly inside the city boundary (rounded-square beltway
+     * for cities, or compact village radius for Rural Village).
+     */
+    fun isInsideBeltway(x: Float, z: Float, beltwayRadius: Float): Boolean {
+        val cornerR = beltwayRadius * 0.34f
+        val inner = beltwayRadius - cornerR
+        val ax = kotlin.math.abs(x)
+        val az = kotlin.math.abs(z)
+        if (ax <= inner && az <= beltwayRadius) return true
+        if (az <= inner && ax <= beltwayRadius) return true
+        if (ax > beltwayRadius || az > beltwayRadius) return false
+        val dx = ax - inner
+        val dz = az - inner
+        return dx * dx + dz * dz <= cornerR * cornerR
+    }
+
+    /**
+     * Generates a closed smooth rounded-square beltway highway loop bordering the city,
+     * plus 2-3 clean regional highway entry connectors to the map edge.
+     */
+    fun buildBeltwayHighway(beltwayRadius: Float): List<RoadPolyline> {
+        val result = mutableListOf<RoadPolyline>()
+        val cornerR = beltwayRadius * 0.34f
+        val inner = beltwayRadius - cornerR
+        val loop = mutableListOf<Vec2>()
+
+        // 4 rounded corners + straight sides (closed loop)
+        val arcSteps = 7
+        // Top-right corner (+inner, +inner), angles 0..PI/2
+        for (i in 0..arcSteps) {
+            val a = (Math.PI * 0.5 * i / arcSteps).toFloat()
+            loop.add(Vec2(inner + cos(a) * cornerR, inner + sin(a) * cornerR))
+        }
+        // Top-left corner (-inner, +inner), angles PI/2..PI
+        for (i in 0..arcSteps) {
+            val a = (Math.PI * 0.5 + Math.PI * 0.5 * i / arcSteps).toFloat()
+            loop.add(Vec2(-inner + cos(a) * cornerR, inner + sin(a) * cornerR))
+        }
+        // Bottom-left corner (-inner, -inner), angles PI..3PI/2
+        for (i in 0..arcSteps) {
+            val a = (Math.PI + Math.PI * 0.5 * i / arcSteps).toFloat()
+            loop.add(Vec2(-inner + cos(a) * cornerR, -inner + sin(a) * cornerR))
+        }
+        // Bottom-right corner (+inner, -inner), angles 3PI/2..2PI
+        for (i in 0..arcSteps) {
+            val a = (Math.PI * 1.5 + Math.PI * 0.5 * i / arcSteps).toFloat()
+            loop.add(Vec2(inner + cos(a) * cornerR, -inner + sin(a) * cornerR))
+        }
+        // Close loop seamlessly
+        loop.add(loop.first())
+        result.add(RoadPolyline(loop, isMajor = true, isHighway = true))
+
+        // Add 2-3 clean highway exits to the outer map border so the ring connects outward
+        val edge = halfExtent + 1.8f
+        val offsetA = (rng.nextFloat() - 0.5f) * inner * 0.8f
+        val offsetB = (rng.nextFloat() - 0.5f) * inner * 0.8f
+        val exits = listOf(
+            listOf(Vec2(offsetA, beltwayRadius), Vec2(offsetA, edge)),
+            listOf(Vec2(offsetB, -beltwayRadius), Vec2(offsetB, -edge)),
+            listOf(Vec2(beltwayRadius, offsetA * 0.6f), Vec2(edge, offsetA * 0.6f))
+        )
+        val exitCount = 2 + rng.nextInt(2)
+        for (i in 0 until exitCount) {
+            result.add(RoadPolyline(exits[i], isMajor = true, isHighway = true))
+        }
+        return result
+    }
+
+    fun traceRoadNetwork(spacing: Float, beltwayRadius: Float): List<RoadPolyline> {
         val roads = mutableListOf<RoadPolyline>()
         val majorPoints = mutableListOf<Vec2>()
         val minorPoints = mutableListOf<Vec2>()
 
-        // In Village preset, keep the main road grid tighter in the village core so outskirts hold fields & spur roads
-        val traceLimit = if (style == TensorFieldStyle.VILLAGE_FIELDS) halfExtent * 0.62f else halfExtent - 1.0f
+        val traceRadius = if (style == TensorFieldStyle.VILLAGE_FIELDS) halfExtent * 0.58f else beltwayRadius
         val stepSize = (spacing * 0.22f).coerceIn(0.95f, 2.0f)
-        val minSepMajor = spacing * 0.78f
-        val minSepMinor = spacing * 0.74f
-        val maxSteps = ((traceLimit * 2.3f) / stepSize).toInt().coerceIn(28, 110)
+        val minSepMajor = spacing * 0.82f
+        val minSepMinor = spacing * 0.78f
+        val maxSteps = ((traceRadius * 2.2f) / stepSize).toInt().coerceIn(24, 100)
 
         val seeds = mutableListOf<Vec2>()
         for (c in focalCenters) {
             seeds.add(Vec2(c.x + spacing * 0.55f, c.z + 0.2f))
             seeds.add(Vec2(c.x - spacing * 0.55f, c.z - 0.2f))
         }
-        var gx = -traceLimit + spacing * 0.5f
-        while (gx < traceLimit - spacing * 0.4f) {
-            var gz = -traceLimit + spacing * 0.5f
-            while (gz < traceLimit - spacing * 0.4f) {
+        var gx = -traceRadius + spacing * 0.65f
+        while (gx < traceRadius - spacing * 0.65f) {
+            var gz = -traceRadius + spacing * 0.65f
+            while (gz < traceRadius - spacing * 0.65f) {
                 val jx = gx + (rng.nextFloat() - 0.5f) * spacing * 0.20f
                 val jz = gz + (rng.nextFloat() - 0.5f) * spacing * 0.20f
-                seeds.add(Vec2(jx, jz))
+                if (isInsideBeltway(jx, jz, traceRadius * 0.92f)) {
+                    seeds.add(Vec2(jx, jz))
+                }
                 gz += spacing
             }
             gx += spacing
@@ -136,7 +208,7 @@ class TensorField(
 
         for (seed in seeds) {
             if (isTooClose(seed, majorPoints, minSepMajor)) continue
-            val raw = traceBidirectional(seed, isMajor = true, stepSize, maxSteps, traceLimit, majorPoints, minSepMajor * 0.78f)
+            val raw = traceBidirectional(seed, isMajor = true, stepSize, maxSteps, traceRadius, majorPoints, minSepMajor * 0.80f)
             if (raw.size >= 4) {
                 val smooth = smoothPolyline(raw, iterations = 2)
                 roads.add(RoadPolyline(smooth, isMajor = true))
@@ -146,7 +218,7 @@ class TensorField(
 
         for (seed in seeds) {
             if (isTooClose(seed, minorPoints, minSepMinor)) continue
-            val raw = traceBidirectional(seed, isMajor = false, stepSize, maxSteps, traceLimit, minorPoints, minSepMinor * 0.78f)
+            val raw = traceBidirectional(seed, isMajor = false, stepSize, maxSteps, traceRadius, minorPoints, minSepMinor * 0.80f)
             if (raw.size >= 4) {
                 val smooth = smoothPolyline(raw, iterations = 2)
                 roads.add(RoadPolyline(smooth, isMajor = false))
@@ -157,10 +229,6 @@ class TensorField(
         return roads
     }
 
-    /**
-     * Traces a gentle, winding countryside lane from a start point on the village edge
-     * out to an isolated outpost destination point (no buildings lined along the lane).
-     */
     fun traceCountrySpur(start: Vec2, target: Vec2): RoadPolyline {
         val pts = mutableListOf<Vec2>()
         val segments = 14
@@ -175,8 +243,8 @@ class TensorField(
         for (i in 0..segments) {
             val t = i.toFloat() / segments.toFloat()
             val bend = sin(t * Math.PI.toFloat() * waveFreq) * bendAmp * sin(t * Math.PI.toFloat())
-            val px = (start.x + dx * t + nx * bend).coerceIn(-halfExtent + 1.5f, halfExtent - 1.5f)
-            val pz = (start.z + dz * t + nz * bend).coerceIn(-halfExtent + 1.5f, halfExtent - 1.5f)
+            val px = (start.x + dx * t + nx * bend).coerceIn(-halfExtent + 1.8f, halfExtent - 1.8f)
+            val pz = (start.z + dz * t + nz * bend).coerceIn(-halfExtent + 1.8f, halfExtent - 1.8f)
             pts.add(Vec2(px, pz))
         }
         return RoadPolyline(smoothPolyline(pts, iterations = 2), isMajor = false, isSpur = true)
@@ -187,13 +255,13 @@ class TensorField(
         isMajor: Boolean,
         step: Float,
         maxSteps: Int,
-        limit: Float,
+        beltwayRadius: Float,
         existingPoints: List<Vec2>,
         stopDist: Float
     ): List<Vec2> {
         val initDir = sampleDirection(seed.x, seed.z, isMajor)
-        val forward = traceOneWay(seed, initDir, isMajor, step, maxSteps / 2, limit, existingPoints, stopDist)
-        val backward = traceOneWay(seed, Vec2(-initDir.x, -initDir.z), isMajor, step, maxSteps / 2, limit, existingPoints, stopDist)
+        val forward = traceOneWay(seed, initDir, isMajor, step, maxSteps / 2, beltwayRadius, existingPoints, stopDist)
+        val backward = traceOneWay(seed, Vec2(-initDir.x, -initDir.z), isMajor, step, maxSteps / 2, beltwayRadius, existingPoints, stopDist)
         val combined = ArrayList<Vec2>(backward.size + forward.size)
         for (i in backward.lastIndex downTo 1) {
             combined.add(backward[i])
@@ -208,7 +276,7 @@ class TensorField(
         isMajor: Boolean,
         step: Float,
         maxSteps: Int,
-        limit: Float,
+        beltwayRadius: Float,
         existingPoints: List<Vec2>,
         stopDist: Float
     ): List<Vec2> {
@@ -218,7 +286,10 @@ class TensorField(
 
         for (i in 0 until maxSteps) {
             val next = rk4Step(cur, prevDir, isMajor, step)
-            if (next.x < -limit || next.x > limit || next.z < -limit || next.z > limit) {
+            if (!isInsideBeltway(next.x, next.z, beltwayRadius)) {
+                // Snap final point cleanly onto the beltway border so streets meet the highway with zero overhang
+                val snapped = snapToBeltway(cur, next, beltwayRadius)
+                pts.add(snapped)
                 break
             }
             val moveX = next.x - cur.x
@@ -240,6 +311,21 @@ class TensorField(
             prevDir = newDir
         }
         return pts
+    }
+
+    private fun snapToBeltway(inside: Vec2, outside: Vec2, beltwayRadius: Float): Vec2 {
+        var lo = 0f
+        var hi = 1f
+        repeat(6) {
+            val mid = (lo + hi) * 0.5f
+            val mx = inside.x + (outside.x - inside.x) * mid
+            val mz = inside.z + (outside.z - inside.z) * mid
+            if (isInsideBeltway(mx, mz, beltwayRadius)) lo = mid else hi = mid
+        }
+        return Vec2(
+            inside.x + (outside.x - inside.x) * lo,
+            inside.z + (outside.z - inside.z) * lo
+        )
     }
 
     private fun smoothPolyline(points: List<Vec2>, iterations: Int): List<Vec2> {
