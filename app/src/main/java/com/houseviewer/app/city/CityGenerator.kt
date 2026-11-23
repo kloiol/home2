@@ -219,9 +219,15 @@ object CityGenerator {
             }
         }
 
-        // Sort with slight noise so dense core fills first, creating realistic urban-to-rural density gradient
-        lotCandidates.sortBy { (lx, lz, _) ->
-            hypot(lx - denseCoreCenter.x, lz - denseCoreCenter.z) + rng.nextFloat() * halfExtent * 0.45f
+        // Pre-compute fixed sort keys so TimSort's comparator contract is strictly satisfied
+        val scoredLots = lotCandidates.map { lot ->
+            val key = hypot(lot.first - denseCoreCenter.x, lot.second - denseCoreCenter.z) +
+                rng.nextFloat() * halfExtent * 0.45f
+            Pair(key, lot)
+        }.sortedBy { it.first }
+        lotCandidates.clear()
+        for ((_, lot) in scoredLots) {
+            lotCandidates.add(lot)
         }
 
         // 6. Place houses with exact segment clearance against ALL roads & highway
