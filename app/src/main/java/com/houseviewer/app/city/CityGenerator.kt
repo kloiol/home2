@@ -513,7 +513,7 @@ object CityGenerator {
             posOut, normOut, colOut,
             Vec2(stopCx - nx * barHalf, stopCz - nz * barHalf),
             Vec2(stopCx + nx * barHalf, stopCz + nz * barHalf),
-            halfW = 0.09f, y = yMark, r = 0.94f, g = 0.95f, b = 0.96f
+            halfW = 0.09f, y = yMark, r = 0.94f, g = 0.95f, bCol = 0.96f
         )
 
         // 2. Zebra crosswalk bars slightly behind the stop line
@@ -529,7 +529,7 @@ object CityGenerator {
                 posOut, normOut, colOut,
                 Vec2(sx - tx * 0.24f, sz - tz * 0.24f),
                 Vec2(sx + tx * 0.24f, sz + tz * 0.24f),
-                halfW = 0.075f, y = yMark, r = 0.92f, g = 0.93f, b = 0.95f
+                halfW = 0.075f, y = yMark, r = 0.92f, g = 0.93f, bCol = 0.95f
             )
         }
     }
