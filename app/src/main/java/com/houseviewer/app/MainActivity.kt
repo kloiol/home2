@@ -242,9 +242,14 @@ class MainActivity : AppCompatActivity() {
             TensorFieldStyle.RADIAL_OLD_TOWN -> "Radial"
             TensorFieldStyle.GRID_PLAZAS -> "Grid"
             TensorFieldStyle.MIXED_ORGANIC -> "Mixed"
+            TensorFieldStyle.SOVIET_MICRORAYON -> "Soviet"
         }
         tvModelTitle.text = "Tensor City ($presetShort)"
-        tvModelSubtitle.text = "${result.placedHouses} houses · ${result.placedCathedrals} cathedrals · ${result.placedFields} fields · ${result.mesh.triangleCount} tris"
+        tvModelSubtitle.text = if (result.isSovietMode) {
+            "${result.placedHouses} blocks · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
+        } else {
+            "${result.placedHouses} houses · ${result.placedCathedrals} cathedrals · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
+        }
     }
 
     private fun showCitySettingsDialog() {
@@ -390,7 +395,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshModelsAndFilters(keepModelId: String?) {
         allModels = repository.listModels()
-        val categories = linkedSetOf(CATEGORY_ALL, "house", "cathedral", "khrushchevka")
+        val categories = linkedSetOf(CATEGORY_ALL, "house", "cathedral", "khrushchevka", "lamp_post")
         for (m in allModels) {
             categories.add(m.category)
         }
@@ -554,6 +559,7 @@ class MainActivity : AppCompatActivity() {
             "house" -> "House"
             "cathedral" -> "Cathedral"
             "khrushchevka" -> "Khrushchevka"
+            "lamp_post" -> "Lamp Post"
             "custom" -> "Custom"
             else -> category.replaceFirstChar { it.uppercase() }
         }

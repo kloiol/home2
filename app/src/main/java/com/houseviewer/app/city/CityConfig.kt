@@ -4,7 +4,8 @@ enum class TensorFieldStyle(val label: String) {
     MIXED_ORGANIC("Mixed Organic (Radial + Grid)"),
     RADIAL_OLD_TOWN("Radial Old Town"),
     GRID_PLAZAS("Grid & Cathedral Plazas"),
-    VILLAGE_FIELDS("Rural Village & Fields")
+    VILLAGE_FIELDS("Rural Village & Fields"),
+    SOVIET_MICRORAYON("Soviet Microrayon (Khrushchevkas Only)")
 }
 
 data class CityConfig(
@@ -22,6 +23,8 @@ data class GeneratedCityResult(
     val placedHouses: Int,
     val placedCathedrals: Int,
     val placedFields: Int,
+    val placedLamps: Int,
     val roadSegments: Int,
+    val isSovietMode: Boolean,
     val seedUsed: Long
 )
