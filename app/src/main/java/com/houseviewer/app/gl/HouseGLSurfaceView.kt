@@ -54,6 +54,8 @@ class HouseGLSurfaceView @JvmOverloads constructor(
 
     init {
         setEGLContextClientVersion(2)
+        // Request 24-bit depth buffer to prevent z-fighting on roads, plazas, and windows
+        setEGLConfigChooser(8, 8, 8, 8, 24, 0)
         setRenderer(houseRenderer)
         renderMode = RENDERMODE_WHEN_DIRTY
     }

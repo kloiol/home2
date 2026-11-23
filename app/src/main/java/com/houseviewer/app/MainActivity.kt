@@ -6,6 +6,7 @@ import android.text.InputType
 import android.util.TypedValue
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
@@ -210,7 +211,7 @@ class MainActivity : AppCompatActivity() {
         isGeneratingCity = true
         val activeConfig = cityConfig
         tvModelTitle.text = "Generating Tensor City..."
-        tvModelSubtitle.text = "Tracing roads & placing ${activeConfig.houseCount} houses, ${activeConfig.cathedralCount} cathedrals"
+        tvModelSubtitle.text = "Tracing smooth roads & placing ${activeConfig.houseCount} houses, ${activeConfig.cathedralCount} cathedrals"
         btnCityRegenerate.isEnabled = false
 
         cityExecutor.execute {
@@ -236,8 +237,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayCityResult(result: GeneratedCityResult) {
         glSurfaceView.displayMesh(result.mesh, cityMode = true)
-        tvModelTitle.text = "Tensor City (${cityConfig.fieldStyle.label.substringBefore(' ')})"
-        tvModelSubtitle.text = "${result.placedHouses} houses · ${result.placedCathedrals} cathedrals · ${result.roadSegments} road segs · ${result.mesh.triangleCount} tris"
+        val presetShort = when (cityConfig.fieldStyle) {
+            TensorFieldStyle.VILLAGE_FIELDS -> "Village"
+            TensorFieldStyle.RADIAL_OLD_TOWN -> "Radial"
+            TensorFieldStyle.GRID_PLAZAS -> "Grid"
+            TensorFieldStyle.MIXED_ORGANIC -> "Mixed"
+        }
+        tvModelTitle.text = "Tensor City ($presetShort)"
+        tvModelSubtitle.text = "${result.placedHouses} houses · ${result.placedCathedrals} cathedrals · ${result.placedFields} fields · ${result.mesh.triangleCount} tris"
     }
 
     private fun showCitySettingsDialog() {
@@ -305,8 +312,8 @@ class MainActivity : AppCompatActivity() {
         container.addView(tvSpacing)
         container.addView(sbSpacing)
 
-        // 5. Tensor Field Style
-        container.addView(makeLabel("Tensor Field Layout:"))
+        // 5. Tensor Field Layout Preset (includes new Rural Village & Fields)
+        container.addView(makeLabel("Layout Preset:"))
         val styles = TensorFieldStyle.values()
         val spinner = Spinner(this).apply {
             adapter = ArrayAdapter(
@@ -318,7 +325,15 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(spinner)
 
-        // 6. Optional Seed
+        // 6. Fenced Agricultural Fields Toggle
+        val cbFields = CheckBox(this).apply {
+            text = "Include fenced agricultural fields"
+            isChecked = cityConfig.includeFields
+            setPadding(0, dp(10), 0, dp(4))
+        }
+        container.addView(cbFields)
+
+        // 7. Optional Seed
         container.addView(makeLabel("Seed (leave blank for random):"))
         val etSeed = EditText(this).apply {
             hint = "Random seed"
@@ -338,6 +353,7 @@ class MainActivity : AppCompatActivity() {
                     cathedralCount = cathVal,
                     fieldStyle = styles[spinner.selectedItemPosition],
                     roadSpacing = spacingVal.toFloat(),
+                    includeFields = cbFields.isChecked,
                     seed = seedInput
                 )
                 if (!isCityMode) {
