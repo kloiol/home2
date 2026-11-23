@@ -478,16 +478,21 @@ object CityGenerator {
             val uz = (b.z - a.z) / segLen
 
             var s = 0f
-            while (s < segLen) {
+            var guard = 0
+            while (s < segLen - 1e-3f && guard < 256) {
+                guard++
                 val phase = (accum + s) % cycle
                 if (phase < dashLen) {
                     val rem = kotlin.math.min(dashLen - phase, segLen - s)
-                    val p0 = Vec2(a.x + ux * s, a.z + uz * s)
-                    val p1 = Vec2(a.x + ux * (s + rem), a.z + uz * (s + rem))
-                    appendFlatStripe(posOut, normOut, colOut, p0, p1, halfW, y, 0.92f, 0.93f, 0.95f)
-                    s += rem
+                    if (rem > 0.02f) {
+                        val p0 = Vec2(a.x + ux * s, a.z + uz * s)
+                        val p1 = Vec2(a.x + ux * (s + rem), a.z + uz * (s + rem))
+                        appendFlatStripe(posOut, normOut, colOut, p0, p1, halfW, y, 0.92f, 0.93f, 0.95f)
+                    }
+                    s += max(rem, 0.05f)
                 } else {
-                    s += kotlin.math.min(cycle - phase, segLen - s)
+                    val skip = kotlin.math.min(cycle - phase, segLen - s)
+                    s += max(skip, 0.05f)
                 }
             }
             accum += segLen
