@@ -11,10 +11,8 @@ import kotlin.random.Random
 
 /**
  * Procedurally assembles a 3D low-poly city, rural village, or exclusive Soviet Microrayon
- * using a 2D Tensor Field:
- * - Exclusive SOVIET_MICRORAYON preset: ONLY Khrushchevka/panel blocks on mostly straight avenues
- * - All other presets strictly exclude Khrushchevkas
- * - Consistent ONE lamp post model per seed scattered logically along streets in EVERY preset
+ * on any parametric CityPlate shape (Square, Hexagon, Semicircle, 5-Pointed Star, Rhombus),
+ * bending roads and constraining buildings to the user's surface-area coverage setting.
  */
 object CityGenerator {
 
@@ -71,7 +69,13 @@ object CityGenerator {
 
     fun generate(repository: ModelRepository, config: CityConfig): GeneratedCityResult {
         val rng = Random(config.seed)
-        val halfExtent = (config.citySize * 0.5f).coerceIn(14f, 70f)
+        val plate = CityPlate(
+            shape = config.plateShape,
+            radius = config.plateRadius.coerceIn(16f, 68f),
+            diagonalRatio = config.diagonalRatio,
+            edgeCurvature = config.edgeCurvature,
+            areaCoverage = config.areaCoverage
+        )
         val isVillage = config.fieldStyle == TensorFieldStyle.VILLAGE_FIELDS
         val isSoviet = config.fieldStyle == TensorFieldStyle.SOVIET_MICRORAYON
 
@@ -81,25 +85,21 @@ object CityGenerator {
         val khrushModels = allModels.filter { it.category == "khrushchevka" }
         val lampModels = allModels.filter { it.category == "lamp_post" }
 
-        // Pick EXACTLY ONE consistent lamp post model for this entire seed!
+        // Strictly ONE consistent lamp post model per seed
         val chosenLampMesh: MeshData? = if (lampModels.isNotEmpty()) {
             repository.loadCityMesh(lampModels[rng.nextInt(lampModels.size)])
         } else {
             null
         }
 
-        // 1. Organic off-center urban core & randomized focal/cathedral centers
-        val denseCoreCenter = Vec2(
-            (rng.nextFloat() - 0.5f) * halfExtent * 0.34f,
-            (rng.nextFloat() - 0.5f) * halfExtent * 0.34f
-        )
+        // 1. Sample dense urban core & randomized focal/cathedral positions strictly inside the plate coverage zone
+        val denseCoreCenter = samplePointInsidePlate(plate, useCoverage = true, margin = 4.0f, rng = rng)
         val desiredCathedrals = if (isSoviet) 0 else config.cathedralCount.coerceIn(0, 6)
         val focalCount = max(1, desiredCathedrals)
-        val focalSpread = if (isVillage) halfExtent * 0.45f else halfExtent * 0.58f
-        val focalCenters = chooseRandomFocalCenters(focalCount, denseCoreCenter, focalSpread, halfExtent - 4.5f, rng)
+        val focalCenters = chooseRandomFocalCenters(focalCount, plate, rng)
 
-        // 2. Build 2D Tensor Field + curvy bypass highway (in urban presets, including Soviet)
-        val field = TensorField(halfExtent, config.fieldStyle, focalCenters, denseCoreCenter, rng)
+        // 2. Build shape-conforming Tensor Field + curvy contour-following bypass highway
+        val field = TensorField(plate, config.fieldStyle, focalCenters, denseCoreCenter, rng)
         val bypassHighway = if (!isVillage) field.buildCurvyBypassHighway() else null
 
         val junctions = mutableListOf<HighwayJunction>()
@@ -116,33 +116,33 @@ object CityGenerator {
         val placements = mutableListOf<PlacedBuilding>()
         val plazas = mutableListOf<PlacedFootprint>()
 
-        // 3. Place Cathedrals (STRICTLY skipped in Soviet Microrayon preset!)
+        // 3. Place Cathedrals (never in Soviet preset, strictly inside plate coverage & clear of highway)
         var placedCathedrals = 0
         if (!isSoviet && desiredCathedrals > 0 && cathedralModels.isNotEmpty()) {
             for (i in 0 until desiredCathedrals) {
                 val model = cathedralModels[rng.nextInt(cathedralModels.size)]
                 val mesh = repository.loadCityMesh(model)
                 val radius = max(mesh.widthX, mesh.depthZ) * 0.56f + 0.9f
-                var chosen = focalCenters[i % focalCenters.size]
+                var chosen: Vec2? = focalCenters.getOrNull(i)
 
-                if (collides(chosen.x, chosen.z, radius, footprints) ||
-                    (bypassHighway != null && isNearRoadSegments(chosen.x, chosen.z, listOf(bypassHighway), radius + 1.8f))
+                if (chosen == null ||
+                    !plate.containsInCoverage(chosen.x, chosen.z, radius + 0.8f) ||
+                    collides(chosen.x, chosen.z, radius, footprints) ||
+                    (bypassHighway != null && isNearRoadSegments(chosen.x, chosen.z, listOf(bypassHighway), radius + 1.6f))
                 ) {
-                    var found: Vec2? = null
-                    for (attempt in 0 until 40) {
-                        val ang = rng.nextFloat() * Math.PI.toFloat() * 2f
-                        val r = kotlin.math.sqrt(rng.nextFloat()) * focalSpread
-                        val cx = (denseCoreCenter.x + cos(ang) * r).coerceIn(-halfExtent + 5f, halfExtent - 5f)
-                        val cz = (denseCoreCenter.z + sin(ang) * r).coerceIn(-halfExtent + 5f, halfExtent - 5f)
-                        if (!collides(cx, cz, radius, footprints) &&
-                            (bypassHighway == null || !isNearRoadSegments(cx, cz, listOf(bypassHighway), radius + 1.8f))
+                    chosen = null
+                    for (attempt in 0 until 55) {
+                        val pt = samplePointInsidePlate(plate, useCoverage = true, margin = radius + 0.8f, rng = rng)
+                        if (!plate.containsInCoverage(pt.x, pt.z, radius + 0.8f)) continue
+                        if (!collides(pt.x, pt.z, radius, footprints) &&
+                            (bypassHighway == null || !isNearRoadSegments(pt.x, pt.z, listOf(bypassHighway), radius + 1.6f))
                         ) {
-                            found = Vec2(cx, cz)
+                            chosen = pt
                             break
                         }
                     }
-                    if (found != null) chosen = found else continue
                 }
+                if (chosen == null) continue
 
                 val dir = field.sampleDirection(chosen.x, chosen.z, isMajor = true)
                 val yaw = atan2(dir.x, dir.z)
@@ -153,24 +153,16 @@ object CityGenerator {
             }
         }
 
-        // 4. Rural Village scenic spur roads to isolated outposts
+        // 4. Rural Village scenic spur roads to isolated outposts (strictly inside plate!)
         var placedBuildings = 0
         val targetBuildings = config.houseCount.coerceIn(0, 200)
         if (isVillage && houseModels.isNotEmpty()) {
             val spurCount = (3 + rng.nextInt(3)).coerceAtMost(max(1, targetBuildings / 4))
-            val baseSpurAngle = rng.nextFloat() * Math.PI.toFloat() * 2f
             for (s in 0 until spurCount) {
-                val angle = baseSpurAngle + (2f * Math.PI.toFloat() * s / spurCount) + (rng.nextFloat() - 0.5f) * 0.35f
-                val startR = halfExtent * 0.40f
-                val endR = halfExtent * (0.76f + rng.nextFloat() * 0.12f)
-                val startPt = Vec2(
-                    (denseCoreCenter.x + cos(angle) * startR).coerceIn(-halfExtent + 3f, halfExtent - 3f),
-                    (denseCoreCenter.z + sin(angle) * startR).coerceIn(-halfExtent + 3f, halfExtent - 3f)
-                )
-                val endPt = Vec2(
-                    (denseCoreCenter.x + cos(angle) * endR).coerceIn(-halfExtent + 3f, halfExtent - 3f),
-                    (denseCoreCenter.z + sin(angle) * endR).coerceIn(-halfExtent + 3f, halfExtent - 3f)
-                )
+                val endPt = samplePointInsidePlate(plate, useCoverage = false, margin = 3.2f, rng = rng)
+                if (!plate.contains(endPt.x, endPt.z, 3.2f)) continue
+                val startPt = Vec2(endPt.x * 0.45f, endPt.z * 0.45f)
+                if (!plate.contains(startPt.x, startPt.z, 2.0f)) continue
 
                 val model = houseModels[rng.nextInt(houseModels.size)]
                 val mesh = repository.loadCityMesh(model)
@@ -188,8 +180,9 @@ object CityGenerator {
             }
         }
 
-        // 5. Collect street lot candidates
+        // 5. Collect street lot candidates strictly inside plate coverage zone
         val lotCandidates = mutableListOf<Triple<Float, Float, Float>>()
+        val maxCovR = plate.maxRadius * plate.coverageLinearScale
         for (road in roads) {
             if (road.isSpur || road.isHighway) continue
             val pts = road.points
@@ -210,33 +203,30 @@ object CityGenerator {
                 val midZ = (p0.z + p1.z) * 0.5f
 
                 val distCore = hypot(midX - denseCoreCenter.x, midZ - denseCoreCenter.z)
-                val densityProb = if (isSoviet) 0.90f else (1.0f - (distCore / (halfExtent * 1.05f)) * 0.65f).coerceIn(0.20f, 1.0f)
+                val densityProb = if (isSoviet) 0.90f else (1.0f - (distCore / (maxCovR * 1.15f)) * 0.60f).coerceIn(0.25f, 1.0f)
                 if (rng.nextFloat() > densityProb) continue
 
-                // Khrushchevkas are wider/deeper so step back slightly further from the avenue
                 val offset = roadHalfW + (if (isSoviet) 2.15f else 1.38f) + rng.nextFloat() * 0.45f
-                val boundMargin = if (isSoviet) 3.4f else 2.2f
+                val edgeMargin = if (isSoviet) 2.8f else 1.8f
 
                 val lx = midX + nx * offset
                 val lz = midZ + nz * offset
-                if (inBounds(lx, lz, halfExtent - boundMargin)) {
-                    // Align Soviet slabs cleanly parallel or perpendicular to avenue
+                if (plate.containsInCoverage(lx, lz, edgeMargin)) {
                     val yawL = atan2(-nx, -nz) + if (isSoviet && rng.nextFloat() < 0.30f) (Math.PI * 0.5).toFloat() else 0f
                     lotCandidates.add(Triple(lx, lz, yawL))
                 }
                 val rx = midX - nx * offset
                 val rz = midZ - nz * offset
-                if (inBounds(rx, rz, halfExtent - boundMargin)) {
+                if (plate.containsInCoverage(rx, rz, edgeMargin)) {
                     val yawR = atan2(nx, nz) + if (isSoviet && rng.nextFloat() < 0.30f) (Math.PI * 0.5).toFloat() else 0f
                     lotCandidates.add(Triple(rx, rz, yawR))
                 }
             }
         }
 
-        // Pre-compute fixed sort keys (TimSort-safe!)
         val scoredLots = lotCandidates.map { lot ->
             val key = hypot(lot.first - denseCoreCenter.x, lot.second - denseCoreCenter.z) +
-                rng.nextFloat() * halfExtent * 0.45f
+                rng.nextFloat() * maxCovR * 0.45f
             Pair(key, lot)
         }.sortedBy { it.first }
         lotCandidates.clear()
@@ -244,7 +234,7 @@ object CityGenerator {
             lotCandidates.add(lot)
         }
 
-        // 6. Place primary buildings: EXCLUSIVELY Khrushchevkas in Soviet preset, EXCLUSIVELY Houses otherwise!
+        // 6. Place primary buildings strictly inside plate coverage zone
         val primaryPool = if (isSoviet) khrushModels else houseModels
         if (targetBuildings > 0 && primaryPool.isNotEmpty()) {
             for ((lx, lz, yaw) in lotCandidates) {
@@ -254,6 +244,7 @@ object CityGenerator {
                 val scale = if (isSoviet) (0.86f + rng.nextFloat() * 0.16f) else (0.90f + rng.nextFloat() * 0.20f)
                 val radius = max(mesh.widthX, mesh.depthZ) * 0.53f * scale + (if (isSoviet) 0.55f else 0.35f)
 
+                if (!plate.containsInCoverage(lx, lz, radius + 0.3f)) continue
                 if (isNearRoadSegments(lx, lz, roads, radius + 0.35f)) continue
                 if (!collides(lx, lz, radius, footprints)) {
                     placements.add(PlacedBuilding(mesh, lx, 0.0f, lz, yaw, scale))
@@ -262,63 +253,57 @@ object CityGenerator {
                 }
             }
 
-            // Infill remaining blocks
             var attempts = 0
-            val maxAttempts = targetBuildings * 10
+            val maxAttempts = targetBuildings * 12
             while (placedBuildings < targetBuildings && attempts < maxAttempts) {
                 attempts++
-                val ang = rng.nextFloat() * Math.PI.toFloat() * 2f
-                val r = rng.nextFloat() * halfExtent * (if (isSoviet) 0.80f else 0.72f)
-                val rx = denseCoreCenter.x + cos(ang) * r
-                val rz = denseCoreCenter.z + sin(ang) * r
-                val margin = if (isSoviet) 3.4f else 2.4f
-                if (!inBounds(rx, rz, halfExtent - margin)) continue
-
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = if (isSoviet) 3.0f else 2.0f, rng = rng)
                 val model = primaryPool[rng.nextInt(primaryPool.size)]
                 val mesh = repository.loadCityMesh(model)
                 val scale = if (isSoviet) (0.86f + rng.nextFloat() * 0.16f) else (0.88f + rng.nextFloat() * 0.20f)
                 val radius = max(mesh.widthX, mesh.depthZ) * 0.53f * scale + (if (isSoviet) 0.60f else 0.40f)
-                if (isNearRoadSegments(rx, rz, roads, radius + 0.40f)) continue
-                if (!collides(rx, rz, radius, footprints)) {
-                    val dir = field.sampleDirection(rx, rz, isMajor = true)
+                if (!plate.containsInCoverage(pt.x, pt.z, radius + 0.3f)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, radius + 0.40f)) continue
+                if (!collides(pt.x, pt.z, radius, footprints)) {
+                    val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
                     val yaw = atan2(dir.x, dir.z) + if (isSoviet && rng.nextFloat() < 0.35f) (Math.PI * 0.5).toFloat() else 0f
-                    placements.add(PlacedBuilding(mesh, rx, 0.0f, rz, yaw, scale))
-                    footprints.add(PlacedFootprint(rx, rz, radius))
+                    placements.add(PlacedBuilding(mesh, pt.x, 0.0f, pt.z, yaw, scale))
+                    footprints.add(PlacedFootprint(pt.x, pt.z, radius))
                     placedBuildings++
                 }
             }
         }
 
-        // 7. Place Fenced Agricultural Fields (only in non-Soviet presets)
+        // 7. Place Fenced Agricultural Fields strictly inside plate & clear of all roads/highways
         val fields = mutableListOf<FencedField>()
         if (!isSoviet && (config.includeFields || isVillage)) {
             val desiredFields = if (isVillage) {
-                (config.citySize * 0.55f).toInt().coerceIn(14, 40)
+                (plate.radius * 0.95f).toInt().coerceIn(12, 38)
             } else {
-                (config.citySize * 0.28f).toInt().coerceIn(8, 22)
+                (plate.radius * 0.48f).toInt().coerceIn(6, 20)
             }
             var fieldAttempts = 0
-            while (fields.size < desiredFields && fieldAttempts < desiredFields * 24) {
+            while (fields.size < desiredFields && fieldAttempts < desiredFields * 26) {
                 fieldAttempts++
-                val fx = (rng.nextFloat() * 2f - 1f) * (halfExtent - 3.6f)
-                val fz = (rng.nextFloat() * 2f - 1f) * (halfExtent - 3.6f)
-                val fw = if (isVillage) 3.4f + rng.nextFloat() * 2.8f else 2.8f + rng.nextFloat() * 2.4f
-                val fd = if (isVillage) 2.8f + rng.nextFloat() * 2.4f else 2.4f + rng.nextFloat() * 2.0f
+                val pt = samplePointInsidePlate(plate, useCoverage = false, margin = 2.8f, rng = rng)
+                val fw = if (isVillage) 3.2f + rng.nextFloat() * 2.6f else 2.6f + rng.nextFloat() * 2.2f
+                val fd = if (isVillage) 2.6f + rng.nextFloat() * 2.2f else 2.2f + rng.nextFloat() * 1.8f
                 val fRadius = hypot(fw, fd) * 0.52f + 0.40f
 
-                if (collides(fx, fz, fRadius, footprints)) continue
-
-                val dir = field.sampleDirection(fx, fz, isMajor = true)
+                if (collides(pt.x, pt.z, fRadius, footprints)) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
                 val yaw = atan2(dir.x, dir.z)
-                if (fieldIntersectsAnyRoad(fx, fz, fw, fd, yaw, roads)) continue
+
+                if (!fieldFitsInsidePlate(pt.x, pt.z, fw, fd, yaw, plate)) continue
+                if (fieldIntersectsAnyRoad(pt.x, pt.z, fw, fd, yaw, roads)) continue
 
                 val col = FIELD_COLORS[rng.nextInt(FIELD_COLORS.size)]
-                fields.add(FencedField(fx, fz, fw, fd, yaw, col[0], col[1], col[2]))
-                footprints.add(PlacedFootprint(fx, fz, fRadius))
+                fields.add(FencedField(pt.x, pt.z, fw, fd, yaw, col[0], col[1], col[2]))
+                footprints.add(PlacedFootprint(pt.x, pt.z, fRadius))
             }
         }
 
-        // 8. Scatter ONE consistent Lamp Post model logically along roads in EVERY preset (including Soviet!)
+        // 8. Scatter ONE consistent Lamp Post model logically along roads in EVERY preset
         val placedLampPositions = mutableListOf<Vec2>()
         var placedLamps = 0
         if (chosenLampMesh != null) {
@@ -327,7 +312,7 @@ object CityGenerator {
             var sideToggle = 1f
 
             for (road in roads) {
-                if (road.isSpur) continue // Keep rural dirt spurs dark & empty
+                if (road.isSpur) continue
                 val pts = road.points
                 if (pts.size < 2) continue
                 val roadHalfW = when {
@@ -354,9 +339,8 @@ object CityGenerator {
                         sideToggle = -sideToggle
                         val lx = (a.x + b.x) * 0.5f + nx * sideToggle * (roadHalfW + 0.34f)
                         val lz = (a.z + b.z) * 0.5f + nz * sideToggle * (roadHalfW + 0.34f)
-                        if (!inBounds(lx, lz, halfExtent - 1.2f)) continue
+                        if (!plate.contains(lx, lz, margin = 0.8f)) continue
 
-                        // Ensure streets are never crowded with lamps & lamps never sit inside another road or building
                         var tooCloseLamp = false
                         for (lp in placedLampPositions) {
                             val dx = lx - lp.x
@@ -370,7 +354,6 @@ object CityGenerator {
                         if (collides(lx, lz, 0.35f, footprints)) continue
                         if (isInsideAnyRoadSurface(lx, lz, roads)) continue
 
-                        // Orient lamp +Z arm toward the road centerline
                         val yaw = atan2(-sideToggle * nx, -sideToggle * nz)
                         placements.add(PlacedBuilding(chosenLampMesh, lx, 0.0f, lz, yaw, 1.0f))
                         placedLampPositions.add(Vec2(lx, lz))
@@ -380,16 +363,15 @@ object CityGenerator {
             }
         }
 
-        // 9. Build unified GPU mesh with clean vertical separation
+        // 9. Build unified GPU mesh on the exact parametric 3D plate polygon!
         val posOut = FloatList(65536)
         val normOut = FloatList(65536)
         val colOut = FloatList(65536)
 
-        val groundSize = halfExtent * 2f + 4f
         val gr = if (isSoviet) 0.36f else 0.34f
         val gg = if (isSoviet) 0.58f else 0.68f
         val gb = if (isSoviet) 0.30f else 0.28f
-        appendBox(posOut, normOut, colOut, 0f, -0.8f, 0f, groundSize, 0.8f, groundSize, gr, gg, gb)
+        appendPolygonPlate(posOut, normOut, colOut, plate, yBot = -0.9f, yTop = 0.0f, gr, gg, gb)
 
         for (f in fields) {
             appendFencedField(posOut, normOut, colOut, f)
@@ -457,9 +439,9 @@ object CityGenerator {
             normals = normals,
             colors = colors,
             vertexCount = vertexCount,
-            boundingExtent = halfExtent * 1.45f,
-            widthX = groundSize,
-            depthZ = groundSize,
+            boundingExtent = plate.maxRadius * 1.42f,
+            widthX = plate.maxX - plate.minX,
+            depthZ = plate.maxZ - plate.minZ,
             heightY = 7.0f
         )
 
@@ -473,6 +455,105 @@ object CityGenerator {
             isSovietMode = isSoviet,
             seedUsed = config.seed
         )
+    }
+
+    /**
+     * Triangulates any star-shaped 2D plate polygon (Square, Hexagon, Semicircle,
+     * 5-Pointed Star, Rhombus) into a crisp 3D slab with darkened perimeter earth skirts.
+     */
+    private fun appendPolygonPlate(
+        posOut: FloatList,
+        normOut: FloatList,
+        colOut: FloatList,
+        plate: CityPlate,
+        yBot: Float,
+        yTop: Float,
+        r: Float,
+        g: Float,
+        b: Float
+    ) {
+        val poly = plate.boundary
+        val n = poly.size
+        val cx = plate.centroid.x
+        val cz = plate.centroid.z
+        val sr = r * 0.62f
+        val sg = g * 0.62f
+        val sb = b * 0.62f
+
+        for (i in 0 until n) {
+            val a = poly[i]
+            val c = poly[(i + 1) % n]
+            // Top surface (+y)
+            appendTri(posOut, normOut, colOut, cx, yTop, cz, c.x, yTop, c.z, a.x, yTop, a.z, 0f, 1f, 0f, r, g, b)
+            // Bottom cap (-y)
+            appendTri(posOut, normOut, colOut, cx, yBot, cz, a.x, yBot, a.z, c.x, yBot, c.z, 0f, -1f, 0f, sr, sg, sb)
+            // Perimeter skirt quad
+            val dx = c.x - a.x
+            val dz = c.z - a.z
+            val l = hypot(dx, dz).coerceAtLeast(1e-4f)
+            val nx = dz / l
+            val nz = -dx / l
+            appendTri(posOut, normOut, colOut, a.x, yBot, a.z, c.x, yBot, c.z, c.x, yTop, c.z, nx, 0f, nz, sr, sg, sb)
+            appendTri(posOut, normOut, colOut, a.x, yBot, a.z, c.x, yTop, c.z, a.x, yTop, a.z, nx, 0f, nz, sr, sg, sb)
+        }
+    }
+
+    private fun samplePointInsidePlate(
+        plate: CityPlate,
+        useCoverage: Boolean,
+        margin: Float,
+        rng: Random
+    ): Vec2 {
+        val loX = plate.minX; val hiX = plate.maxX
+        val loZ = plate.minZ; val hiZ = plate.maxZ
+        for (attempt in 0 until 60) {
+            val x = loX + rng.nextFloat() * (hiX - loX)
+            val z = loZ + rng.nextFloat() * (hiZ - loZ)
+            val ok = if (useCoverage) plate.containsInCoverage(x, z, margin) else plate.contains(x, z, margin)
+            if (ok) return Vec2(x, z)
+        }
+        return plate.centroid
+    }
+
+    private fun chooseRandomFocalCenters(count: Int, plate: CityPlate, rng: Random): List<Vec2> {
+        val centers = mutableListOf<Vec2>()
+        val minSpacing = (plate.maxRadius * plate.coverageLinearScale * 0.48f).coerceIn(7.0f, 18.0f)
+        var attempts = 0
+        while (centers.size < count && attempts < count * 50) {
+            attempts++
+            val pt = samplePointInsidePlate(plate, useCoverage = true, margin = 4.2f, rng = rng)
+            var tooClose = false
+            for (existing in centers) {
+                if (hypot(pt.x - existing.x, pt.z - existing.z) < minSpacing) {
+                    tooClose = true
+                    break
+                }
+            }
+            if (!tooClose) centers.add(pt)
+        }
+        if (centers.isEmpty()) centers.add(plate.centroid)
+        return centers
+    }
+
+    private fun fieldFitsInsidePlate(
+        fx: Float,
+        fz: Float,
+        fw: Float,
+        fd: Float,
+        yawRad: Float,
+        plate: CityPlate
+    ): Boolean {
+        val c = cos(yawRad)
+        val s = sin(yawRad)
+        val hw = fw * 0.5f + 0.35f
+        val hd = fd * 0.5f + 0.35f
+        val corners = arrayOf(Vec2(-hw, -hd), Vec2(hw, -hd), Vec2(hw, hd), Vec2(-hw, hd))
+        for (lp in corners) {
+            val wx = lp.x * c + lp.z * s + fx
+            val wz = -lp.x * s + lp.z * c + fz
+            if (!plate.contains(wx, wz, margin = 0.6f)) return false
+        }
+        return true
     }
 
     private fun isInsideAnyRoadSurface(px: Float, pz: Float, roads: List<RoadPolyline>): Boolean {
@@ -646,45 +727,6 @@ object CityGenerator {
         val nz = (dx / len) * halfW
         appendTri(posOut, normOut, colOut, a.x + nx, y, a.z + nz, a.x - nx, y, a.z - nz, b.x - nx, y, b.z - nz, 0f, 1f, 0f, r, g, bCol)
         appendTri(posOut, normOut, colOut, a.x + nx, y, a.z + nz, b.x - nx, y, b.z - nz, b.x + nx, y, b.z + nz, 0f, 1f, 0f, r, g, bCol)
-    }
-
-    private fun chooseRandomFocalCenters(
-        count: Int,
-        coreCenter: Vec2,
-        spreadRadius: Float,
-        mapLimit: Float,
-        rng: Random
-    ): List<Vec2> {
-        val centers = mutableListOf<Vec2>()
-        val minSpacing = (spreadRadius * 0.68f).coerceIn(7.5f, 18.0f)
-
-        var attempts = 0
-        while (centers.size < count && attempts < count * 40) {
-            attempts++
-            val angle = rng.nextFloat() * Math.PI.toFloat() * 2f
-            val r = kotlin.math.sqrt(rng.nextFloat()) * spreadRadius
-            val cx = (coreCenter.x + cos(angle) * r).coerceIn(-mapLimit, mapLimit)
-            val cz = (coreCenter.z + sin(angle) * r).coerceIn(-mapLimit, mapLimit)
-
-            var tooClose = false
-            for (existing in centers) {
-                if (hypot(cx - existing.x, cz - existing.z) < minSpacing) {
-                    tooClose = true
-                    break
-                }
-            }
-            if (!tooClose) {
-                centers.add(Vec2(cx, cz))
-            }
-        }
-        if (centers.isEmpty()) {
-            centers.add(coreCenter)
-        }
-        return centers
-    }
-
-    private fun inBounds(x: Float, z: Float, limit: Float): Boolean {
-        return x >= -limit && x <= limit && z >= -limit && z <= limit
     }
 
     private fun appendContinuousRoadRibbon(
