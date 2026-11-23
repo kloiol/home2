@@ -247,6 +247,7 @@ class MainActivity : AppCompatActivity() {
             TensorFieldStyle.GRID_PLAZAS -> "Grid"
             TensorFieldStyle.MIXED_ORGANIC -> "Mixed"
             TensorFieldStyle.SOVIET_MICRORAYON -> "Soviet"
+            TensorFieldStyle.NYC_MANHATTAN -> "Manhattan"
         }
         val shapeShort = when (cityConfig.plateShape) {
             PlateShape.SQUARE -> "Square"
@@ -256,10 +257,13 @@ class MainActivity : AppCompatActivity() {
             PlateShape.RHOMBUS -> "Rhombus"
         }
         tvModelTitle.text = "$presetShort · $shapeShort"
-        tvModelSubtitle.text = if (result.isSovietMode) {
-            "${result.placedHouses} blocks · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
-        } else {
-            "${result.placedHouses} houses · ${result.placedCathedrals} cathedrals · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
+        tvModelSubtitle.text = when {
+            result.isNycMode ->
+                "${result.placedHouses} NYC buildings · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
+            result.isSovietMode ->
+                "${result.placedHouses} blocks · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
+            else ->
+                "${result.placedHouses} houses · ${result.placedCathedrals} cathedrals · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
         }
     }
 

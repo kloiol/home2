@@ -78,9 +78,12 @@ object CityGenerator {
         )
         val isVillage = config.fieldStyle == TensorFieldStyle.VILLAGE_FIELDS
         val isSoviet = config.fieldStyle == TensorFieldStyle.SOVIET_MICRORAYON
+        val isNyc = config.fieldStyle == TensorFieldStyle.NYC_MANHATTAN
+        val isEuropean = !isSoviet && !isNyc
 
         val allModels = repository.listModels()
         val houseModels = allModels.filter { it.category == "house" }
+        val nycModels = allModels.filter { it.category == "nyc_builds" }
         val cathedralModels = allModels.filter { it.category == "cathedral" }
         val khrushModels = allModels.filter { it.category == "khrushchevka" }
         val lampModels = allModels.filter { it.category == "lamp_post" }
@@ -103,13 +106,13 @@ object CityGenerator {
 
         // 1. Sample dense urban core & randomized focal/cathedral positions strictly inside the plate coverage zone
         val denseCoreCenter = samplePointInsidePlate(plate, useCoverage = true, margin = 4.0f, rng = rng)
-        val desiredCathedrals = if (isSoviet) 0 else config.cathedralCount.coerceIn(0, 6)
+        val desiredCathedrals = if (isEuropean) config.cathedralCount.coerceIn(0, 6) else 0
         val focalCount = max(1, desiredCathedrals)
         val focalCenters = chooseRandomFocalCenters(focalCount, plate, rng)
 
         // 2. Build shape-conforming Tensor Field + curvy contour-following bypass highway
         val field = TensorField(plate, config.fieldStyle, focalCenters, denseCoreCenter, rng)
-        val bypassHighway = if (!isVillage) field.buildCurvyBypassHighway() else null
+        val bypassHighway = if (!isVillage && !isNyc) field.buildCurvyBypassHighway() else null
 
         val junctions = mutableListOf<HighwayJunction>()
         val roads = field.traceRoadNetwork(
@@ -127,7 +130,7 @@ object CityGenerator {
 
         // 3. Place Cathedrals (never in Soviet preset, strictly inside plate coverage & clear of highway)
         var placedCathedrals = 0
-        if (!isSoviet && desiredCathedrals > 0 && cathedralModels.isNotEmpty()) {
+        if (isEuropean && desiredCathedrals > 0 && cathedralModels.isNotEmpty()) {
             for (i in 0 until desiredCathedrals) {
                 val model = cathedralModels[rng.nextInt(cathedralModels.size)]
                 val mesh = repository.loadCityMesh(model)
@@ -163,7 +166,7 @@ object CityGenerator {
         }
 
         // 3b. Place strictly ONE EU University (eu_uni) & strictly ONE EU Urban Park (eu_park) per seed (never in Soviet)
-        if (!isSoviet && euUniModels.isNotEmpty()) {
+        if (isEuropean && euUniModels.isNotEmpty()) {
             val uniModel = euUniModels[rng.nextInt(euUniModels.size)]
             val uniMesh = repository.loadCityMesh(uniModel)
             val uniRadius = max(uniMesh.widthX, uniMesh.depthZ) * 0.54f + 0.65f
@@ -179,7 +182,7 @@ object CityGenerator {
             }
         }
 
-        if (!isSoviet && euParkModels.isNotEmpty()) {
+        if (isEuropean && euParkModels.isNotEmpty()) {
             val parkModel = euParkModels[rng.nextInt(euParkModels.size)]
             val parkMesh = repository.loadCityMesh(parkModel)
             val parkRadius = max(parkMesh.widthX, parkMesh.depthZ) * 0.54f + 0.55f
@@ -278,7 +281,7 @@ object CityGenerator {
 
         // 6. Place primary buildings strictly inside plate coverage zone
         val primaryPool = if (isSoviet) khrushModels else houseModels
-        if (targetBuildings > 0 && primaryPool.isNotEmpty()) {
+        if (!isNyc && targetBuildings > 0 && primaryPool.isNotEmpty()) {
             for ((lx, lz, yaw) in lotCandidates) {
                 if (placedBuildings >= targetBuildings) break
                 val model = primaryPool[rng.nextInt(primaryPool.size)]
@@ -317,7 +320,7 @@ object CityGenerator {
         }
 
         // 6b. Place EU Industrial buildings (outer fringe) & EU Modern Bus Stations (curbside) in all non-Soviet presets
-        if (!isSoviet && euIndModels.isNotEmpty()) {
+        if (isEuropean && euIndModels.isNotEmpty()) {
             val desiredInd = if (isVillage) 2 else (plate.radius / 9f).toInt().coerceIn(2, 5)
             var placedInd = 0
             // Prefer outer lots furthest from the dense historic center
@@ -351,7 +354,7 @@ object CityGenerator {
             }
         }
 
-        if (!isSoviet && euBusModels.isNotEmpty()) {
+        if (isEuropean && euBusModels.isNotEmpty()) {
             val desiredBus = if (isVillage) 2 else (plate.radius / 7f).toInt().coerceIn(3, 7)
             val busPositions = mutableListOf<Vec2>()
             val minBusSepSq = 9.0f * 9.0f
@@ -582,9 +585,170 @@ object CityGenerator {
             }
         }
 
+        // 6e. Exclusively in NYC Manhattan Grid: fill every street/avenue district almost completely
+        // with tightly packed NYC builds, stepping smoothly down in height from supertalls in the middle!
+        val manhattanSidewalks = mutableListOf<ManhattanBlock>()
+        if (isNyc && nycModels.isNotEmpty()) {
+            val allNycMeshes = nycModels.map { repository.loadCityMesh(it) }
+            val tier0Supertalls = allNycMeshes.filter { it.heightY >= 9.0f }.ifEmpty { allNycMeshes }
+            val tier1HighRises  = allNycMeshes.filter { it.heightY >= 6.5f && it.heightY < 9.0f }.ifEmpty { allNycMeshes }
+            val tier2MidRises   = allNycMeshes.filter { it.heightY >= 2.5f && it.heightY < 6.5f }.ifEmpty { allNycMeshes }
+            val tier3LowRises   = allNycMeshes.filter { it.heightY < 2.5f }.ifEmpty { allNycMeshes }
+
+            // Anchor Midtown skyline core near the visual center of the plate
+            val coreJitter = maxCovR * 0.14f
+            val coreX = (rng.nextFloat() - 0.5f) * 2f * coreJitter
+            val coreZ = (rng.nextFloat() - 0.5f) * 2f * coreJitter
+            val manhattanCore = if (plate.containsInCoverage(coreX, coreZ, 2.0f)) Vec2(coreX, coreZ) else Vec2(0f, 0f)
+
+            val ux = cos(field.manhattanAngle)
+            val uz = sin(field.manhattanAngle)
+            val vx = -uz
+            val vz = ux
+
+            // Sort districts from center outward so Midtown core & surrounding rings pack first
+            val sortedBlocks = field.manhattanBlocks.sortedBy { blk ->
+                val uc = (blk.uMin + blk.uMax) * 0.5f
+                val vc = (blk.vMin + blk.vMax) * 0.5f
+                val bx = uc * ux + vc * vx
+                val bz = uc * uz + vc * vz
+                hypot(bx - manhattanCore.x, bz - manhattanCore.z)
+            }
+
+            val nycMaxBuildings = max(targetBuildings * 3, 280).coerceAtMost(420)
+            val gap = 0.12f
+
+            for (blk in sortedBlocks) {
+                if (placedBuildings >= nycMaxBuildings) break
+                val inU0 = blk.uMin + 0.86f
+                val inU1 = blk.uMax - 0.86f
+                val inV0 = blk.vMin + 0.64f
+                val inV1 = blk.vMax - 0.64f
+                if (inU1 - inU0 < 1.0f || inV1 - inV0 < 1.0f) continue
+
+                var blockPlaced = 0
+                val blockRects = mutableListOf<FloatArray>() // [u0, u1, v0, v1]
+
+                // Shelf-pack rows along V and tightly side-by-side along U inside this district
+                var vCur = inV0
+                while (vCur < inV1 - 0.75f && placedBuildings < nycMaxBuildings) {
+                    var uCur = inU0
+                    var rowMaxDepth = 0f
+                    var guard = 0
+                    while (uCur < inU1 - 0.75f && placedBuildings < nycMaxBuildings && guard < 32) {
+                        guard++
+                        val availU = inU1 - uCur
+                        val availV = inV1 - vCur
+                        if (availU < 0.80f || availV < 0.80f) break
+
+                        val probeU = uCur + minOf(availU * 0.5f, 1.2f)
+                        val probeV = vCur + minOf(availV * 0.5f, 1.2f)
+                        val probeX = probeU * ux + probeV * vx
+                        val probeZ = probeU * uz + probeV * vz
+
+                        val normDist = (
+                            hypot(probeX - manhattanCore.x, probeZ - manhattanCore.z) /
+                                (maxCovR * 0.86f).coerceAtLeast(4f) +
+                                (rng.nextFloat() - 0.5f) * 0.14f
+                        ).coerceIn(0f, 1f)
+
+                        // Pick height tier strictly stepping down from center supertalls -> low-rises
+                        val primaryTier = when {
+                            normDist < 0.28f -> tier0Supertalls
+                            normDist < 0.54f -> tier1HighRises
+                            normDist < 0.78f -> tier2MidRises
+                            else -> tier3LowRises
+                        }
+
+                        var chosenMesh: MeshData? = null
+                        var chosenRot90 = false
+                        var chosenScale = 1.0f
+                        var chosenW = 0f
+                        var chosenD = 0f
+
+                        // Try fitting from primary tier first, then fall back to smaller tier to fill narrow slots!
+                        val candidateTiers = listOf(primaryTier, tier2MidRises, tier3LowRises)
+                        for (tier in candidateTiers) {
+                            for (tries in 0 until 6) {
+                                val cand = tier[rng.nextInt(tier.size)]
+                                val sc = 0.88f + rng.nextFloat() * 0.14f
+                                val w0 = cand.widthX * sc
+                                val d0 = cand.depthZ * sc
+                                if (w0 <= availU + 0.04f && d0 <= availV + 0.04f) {
+                                    chosenMesh = cand; chosenRot90 = false; chosenScale = sc; chosenW = w0; chosenD = d0
+                                    break
+                                } else if (d0 <= availU + 0.04f && w0 <= availV + 0.04f) {
+                                    chosenMesh = cand; chosenRot90 = true; chosenScale = sc; chosenW = d0; chosenD = w0
+                                    break
+                                }
+                            }
+                            if (chosenMesh != null) break
+                        }
+
+                        if (chosenMesh == null) {
+                            uCur += 0.95f
+                            continue
+                        }
+
+                        val bU0 = uCur
+                        val bU1 = uCur + chosenW
+                        val bV0 = vCur
+                        val bV1 = vCur + chosenD
+                        val bcU = (bU0 + bU1) * 0.5f
+                        val bcV = (bV0 + bV1) * 0.5f
+                        val wx = bcU * ux + bcV * vx
+                        val wz = bcU * uz + bcV * vz
+
+                        // Verify all 4 corners fit cleanly inside the plate coverage zone
+                        var cornersOk = true
+                        val cornerUV = arrayOf(
+                            Pair(bU0, bV0), Pair(bU1, bV0), Pair(bU0, bV1), Pair(bU1, bV1)
+                        )
+                        for ((cu, cv) in cornerUV) {
+                            val cx = cu * ux + cv * vx
+                            val cz = cu * uz + cv * vz
+                            if (!plate.containsInCoverage(cx, cz, 0.75f)) {
+                                cornersOk = false
+                                break
+                            }
+                        }
+
+                        var overlap = false
+                        if (cornersOk) {
+                            for (r in blockRects) {
+                                if (bU0 < r[1] + gap && bU1 + gap > r[0] && bV0 < r[3] + gap && bV1 + gap > r[2]) {
+                                    overlap = true
+                                    break
+                                }
+                            }
+                        }
+
+                        if (cornersOk && !overlap) {
+                            val baseYaw = atan2(vx, vz) + (if (chosenRot90) (Math.PI * 0.5).toFloat() else 0f) +
+                                (if (rng.nextBoolean()) Math.PI.toFloat() else 0f)
+                            placements.add(PlacedBuilding(chosenMesh, wx, 0.04f, wz, baseYaw, chosenScale))
+                            footprints.add(PlacedFootprint(wx, wz, max(chosenW, chosenD) * 0.45f))
+                            blockRects.add(floatArrayOf(bU0, bU1, bV0, bV1))
+                            placedBuildings++
+                            blockPlaced++
+                            rowMaxDepth = max(rowMaxDepth, chosenD)
+                            uCur = bU1 + gap
+                        } else {
+                            uCur += 0.95f
+                        }
+                    }
+                    vCur += (if (rowMaxDepth > 0.4f) rowMaxDepth else 1.25f) + gap
+                }
+
+                if (blockPlaced > 0) {
+                    manhattanSidewalks.add(ManhattanBlock(inU0 - 0.14f, inU1 + 0.14f, inV0 - 0.14f, inV1 + 0.14f, field.manhattanAngle))
+                }
+            }
+        }
+
         // 7. Place Fenced Agricultural Fields strictly inside plate & clear of all roads/highways
         val fields = mutableListOf<FencedField>()
-        if (!isSoviet && (config.includeFields || isVillage)) {
+        if (isEuropean && (config.includeFields || isVillage)) {
             val desiredFields = if (isVillage) {
                 (plate.radius * 0.95f).toInt().coerceIn(12, 38)
             } else {
@@ -742,6 +906,10 @@ object CityGenerator {
             appendOctagonSlab(posOut, normOut, colOut, plaza.x, 0.0f, 0.09f, plaza.z, plaza.radius, 0.78f, 0.75f, 0.68f)
         }
 
+        for (sw in manhattanSidewalks) {
+            appendManhattanSidewalk(posOut, normOut, colOut, sw, plate)
+        }
+
         var totalRoadSegments = 0
         for (road in roads) {
             val halfW = when {
@@ -803,7 +971,7 @@ object CityGenerator {
             boundingExtent = plate.maxRadius * 1.42f,
             widthX = plate.maxX - plate.minX,
             depthZ = plate.maxZ - plate.minZ,
-            heightY = 7.0f
+            heightY = if (isNyc) 13.5f else 7.0f
         )
 
         return GeneratedCityResult(
@@ -814,6 +982,7 @@ object CityGenerator {
             placedLamps = placedLamps,
             roadSegments = totalRoadSegments,
             isSovietMode = isSoviet,
+            isNycMode = isNyc,
             seedUsed = config.seed
         )
     }
@@ -822,6 +991,33 @@ object CityGenerator {
      * Triangulates any star-shaped 2D plate polygon (Square, Hexagon, Semicircle,
      * 5-Pointed Star, Rhombus) into a crisp 3D slab with darkened perimeter earth skirts.
      */
+    private fun appendManhattanSidewalk(
+        posOut: FloatList,
+        normOut: FloatList,
+        colOut: FloatList,
+        sw: ManhattanBlock,
+        plate: CityPlate
+    ) {
+        val ux = cos(sw.angleRad)
+        val uz = sin(sw.angleRad)
+        val vx = -uz
+        val vz = ux
+        val c0x = sw.uMin * ux + sw.vMin * vx; val c0z = sw.uMin * uz + sw.vMin * vz
+        val c1x = sw.uMax * ux + sw.vMin * vx; val c1z = sw.uMax * uz + sw.vMin * vz
+        val c2x = sw.uMax * ux + sw.vMax * vx; val c2z = sw.uMax * uz + sw.vMax * vz
+        val c3x = sw.uMin * ux + sw.vMax * vx; val c3z = sw.uMin * uz + sw.vMax * vz
+        // Only draw sidewalk pad if all 4 corners lie cleanly on the plate
+        if (!plate.contains(c0x, c0z, 0.4f) || !plate.contains(c1x, c1z, 0.4f) ||
+            !plate.contains(c2x, c2z, 0.4f) || !plate.contains(c3x, c3z, 0.4f)
+        ) {
+            return
+        }
+        val yTop = 0.04f
+        val sr = 0.62f; val sg = 0.63f; val sb = 0.65f
+        addTri(posOut, normOut, colOut, c0x, yTop, c0z, c2x, yTop, c2z, c1x, yTop, c1z, 0f, 1f, 0f, sr, sg, sb)
+        addTri(posOut, normOut, colOut, c0x, yTop, c0z, c3x, yTop, c3z, c2x, yTop, c2z, 0f, 1f, 0f, sr, sg, sb)
+    }
+
     private fun appendPolygonPlate(
         posOut: FloatList,
         normOut: FloatList,
