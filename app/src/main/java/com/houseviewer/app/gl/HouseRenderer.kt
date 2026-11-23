@@ -32,6 +32,9 @@ class HouseRenderer : GLSurfaceView.Renderer {
     @Volatile
     var isSkyBackground: Boolean = false
 
+    private var viewportWidth: Int = 1
+    private var viewportHeight: Int = 1
+
     private var programId: Int = 0
     private var aPositionLoc: Int = -1
     private var aNormalLoc: Int = -1
@@ -72,6 +75,7 @@ class HouseRenderer : GLSurfaceView.Renderer {
             distance = defaultDistance
             if (pitchDegrees > 45f) pitchDegrees = 22f
         }
+        updateProjection()
     }
 
     fun resetCamera() {
@@ -82,6 +86,7 @@ class HouseRenderer : GLSurfaceView.Renderer {
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+        GLES20.glDepthFunc(GLES20.GL_LEQUAL)
         GLES20.glDisable(GLES20.GL_CULL_FACE)
         programId = buildProgram(VERTEX_SHADER, FRAGMENT_SHADER)
         aPositionLoc = GLES20.glGetAttribLocation(programId, "aPosition")
@@ -92,9 +97,20 @@ class HouseRenderer : GLSurfaceView.Renderer {
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        GLES20.glViewport(0, 0, width, height)
-        val aspect = width.toFloat() / height.coerceAtLeast(1).toFloat()
-        Matrix.perspectiveM(projectionMatrix, 0, 44f, aspect, 0.2f, 400f)
+        viewportWidth = width.coerceAtLeast(1)
+        viewportHeight = height.coerceAtLeast(1)
+        GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+        updateProjection()
+    }
+
+    private fun updateProjection() {
+        val aspect = viewportWidth.toFloat() / viewportHeight.toFloat()
+        // Tight near/far ratio eliminates depth-buffer z-fighting on roads & windows!
+        if (isCityMode) {
+            Matrix.perspectiveM(projectionMatrix, 0, 44f, aspect, 1.5f, 300f)
+        } else {
+            Matrix.perspectiveM(projectionMatrix, 0, 42f, aspect, 0.35f, 65f)
+        }
     }
 
     override fun onDrawFrame(gl: GL10?) {
