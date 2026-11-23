@@ -87,6 +87,8 @@ object CityGenerator {
         val clutterKhrModels = allModels.filter { it.category == "clutter_khr" }
         val euIndModels = allModels.filter { it.category == "eu_ind" }
         val euBusModels = allModels.filter { it.category == "eu_bus" }
+        val euUniModels = allModels.filter { it.category == "eu_uni" }
+        val euParkModels = allModels.filter { it.category == "eu_park" }
         val khtIndModels = allModels.filter { it.category == "kht_ind" }
         val khtBusModels = allModels.filter { it.category == "kht_bus" }
         val khtScootModels = allModels.filter { it.category == "kht_scoot" }
@@ -157,6 +159,39 @@ object CityGenerator {
                 footprints.add(PlacedFootprint(chosen.x, chosen.z, radius))
                 plazas.add(PlacedFootprint(chosen.x, chosen.z, radius + 0.9f))
                 placedCathedrals++
+            }
+        }
+
+        // 3b. Place strictly ONE EU University (eu_uni) & strictly ONE EU Urban Park (eu_park) per seed (never in Soviet)
+        if (!isSoviet && euUniModels.isNotEmpty()) {
+            val uniModel = euUniModels[rng.nextInt(euUniModels.size)]
+            val uniMesh = repository.loadCityMesh(uniModel)
+            val uniRadius = max(uniMesh.widthX, uniMesh.depthZ) * 0.54f + 0.65f
+            for (attempt in 0 until 80) {
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = uniRadius + 0.6f, rng = rng)
+                if (!plate.containsInCoverage(pt.x, pt.z, uniRadius + 0.6f)) continue
+                if (collides(pt.x, pt.z, uniRadius, footprints)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, uniRadius + 0.35f)) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
+                placements.add(PlacedBuilding(uniMesh, pt.x, 0.0f, pt.z, atan2(dir.x, dir.z), 1.0f))
+                footprints.add(PlacedFootprint(pt.x, pt.z, uniRadius))
+                break
+            }
+        }
+
+        if (!isSoviet && euParkModels.isNotEmpty()) {
+            val parkModel = euParkModels[rng.nextInt(euParkModels.size)]
+            val parkMesh = repository.loadCityMesh(parkModel)
+            val parkRadius = max(parkMesh.widthX, parkMesh.depthZ) * 0.54f + 0.55f
+            for (attempt in 0 until 80) {
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = parkRadius + 0.6f, rng = rng)
+                if (!plate.containsInCoverage(pt.x, pt.z, parkRadius + 0.6f)) continue
+                if (collides(pt.x, pt.z, parkRadius, footprints)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, parkRadius + 0.30f)) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
+                placements.add(PlacedBuilding(parkMesh, pt.x, 0.02f, pt.z, atan2(dir.x, dir.z), 1.0f))
+                footprints.add(PlacedFootprint(pt.x, pt.z, parkRadius))
+                break
             }
         }
 
