@@ -10,11 +10,11 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * Procedurally assembles a 3D low-poly city or rural village using a 2D Tensor Field:
- * - Organic curvy bypass highway framing the denser half of the city (with dashed center line)
- * - Crisp white stop bars + zebra crosswalk road markings at every street-to-highway junction
- * - Variable urban building density (denser core tapering out to rural fenced fields)
- * - Exact point-to-segment collision checks so fields & buildings NEVER clip through roads/highways
+ * Procedurally assembles a 3D low-poly city, rural village, or exclusive Soviet Microrayon
+ * using a 2D Tensor Field:
+ * - Exclusive SOVIET_MICRORAYON preset: ONLY Khrushchevka/panel blocks on mostly straight avenues
+ * - All other presets strictly exclude Khrushchevkas
+ * - Consistent ONE lamp post model per seed scattered logically along streets in EVERY preset
  */
 object CityGenerator {
 
@@ -73,22 +73,32 @@ object CityGenerator {
         val rng = Random(config.seed)
         val halfExtent = (config.citySize * 0.5f).coerceIn(14f, 70f)
         val isVillage = config.fieldStyle == TensorFieldStyle.VILLAGE_FIELDS
+        val isSoviet = config.fieldStyle == TensorFieldStyle.SOVIET_MICRORAYON
 
         val allModels = repository.listModels()
         val houseModels = allModels.filter { it.category == "house" }
         val cathedralModels = allModels.filter { it.category == "cathedral" }
+        val khrushModels = allModels.filter { it.category == "khrushchevka" }
+        val lampModels = allModels.filter { it.category == "lamp_post" }
 
-        // 1. Pick an organic off-center dense urban core & truly randomized cathedral positions
+        // Pick EXACTLY ONE consistent lamp post model for this entire seed!
+        val chosenLampMesh: MeshData? = if (lampModels.isNotEmpty()) {
+            repository.loadCityMesh(lampModels[rng.nextInt(lampModels.size)])
+        } else {
+            null
+        }
+
+        // 1. Organic off-center urban core & randomized focal/cathedral centers
         val denseCoreCenter = Vec2(
-            (rng.nextFloat() - 0.5f) * halfExtent * 0.38f,
-            (rng.nextFloat() - 0.5f) * halfExtent * 0.38f
+            (rng.nextFloat() - 0.5f) * halfExtent * 0.34f,
+            (rng.nextFloat() - 0.5f) * halfExtent * 0.34f
         )
-        val desiredCathedrals = config.cathedralCount.coerceIn(0, 6)
+        val desiredCathedrals = if (isSoviet) 0 else config.cathedralCount.coerceIn(0, 6)
         val focalCount = max(1, desiredCathedrals)
         val focalSpread = if (isVillage) halfExtent * 0.45f else halfExtent * 0.58f
         val focalCenters = chooseRandomFocalCenters(focalCount, denseCoreCenter, focalSpread, halfExtent - 4.5f, rng)
 
-        // 2. Build 2D Tensor Field + curvy bypass highway framing the dense half of the city
+        // 2. Build 2D Tensor Field + curvy bypass highway (in urban presets, including Soviet)
         val field = TensorField(halfExtent, config.fieldStyle, focalCenters, denseCoreCenter, rng)
         val bypassHighway = if (!isVillage) field.buildCurvyBypassHighway() else null
 
@@ -106,16 +116,15 @@ object CityGenerator {
         val placements = mutableListOf<PlacedBuilding>()
         val plazas = mutableListOf<PlacedFootprint>()
 
-        // 3. Place Cathedrals at randomized positions (guaranteed clear of highway!)
+        // 3. Place Cathedrals (STRICTLY skipped in Soviet Microrayon preset!)
         var placedCathedrals = 0
-        if (desiredCathedrals > 0 && cathedralModels.isNotEmpty()) {
+        if (!isSoviet && desiredCathedrals > 0 && cathedralModels.isNotEmpty()) {
             for (i in 0 until desiredCathedrals) {
                 val model = cathedralModels[rng.nextInt(cathedralModels.size)]
                 val mesh = repository.loadCityMesh(model)
                 val radius = max(mesh.widthX, mesh.depthZ) * 0.56f + 0.9f
                 var chosen = focalCenters[i % focalCenters.size]
 
-                // If initial random point is too close to the curvy highway, nudge to a valid random spot
                 if (collides(chosen.x, chosen.z, radius, footprints) ||
                     (bypassHighway != null && isNearRoadSegments(chosen.x, chosen.z, listOf(bypassHighway), radius + 1.8f))
                 ) {
@@ -144,11 +153,11 @@ object CityGenerator {
             }
         }
 
-        // 4. In Rural Village preset, create 3-5 empty scenic spur roads leading to isolated outpost buildings
-        var placedHouses = 0
-        val targetHouses = config.houseCount.coerceIn(0, 200)
+        // 4. Rural Village scenic spur roads to isolated outposts
+        var placedBuildings = 0
+        val targetBuildings = config.houseCount.coerceIn(0, 200)
         if (isVillage && houseModels.isNotEmpty()) {
-            val spurCount = (3 + rng.nextInt(3)).coerceAtMost(max(1, targetHouses / 4))
+            val spurCount = (3 + rng.nextInt(3)).coerceAtMost(max(1, targetBuildings / 4))
             val baseSpurAngle = rng.nextFloat() * Math.PI.toFloat() * 2f
             for (s in 0 until spurCount) {
                 val angle = baseSpurAngle + (2f * Math.PI.toFloat() * s / spurCount) + (rng.nextFloat() - 0.5f) * 0.35f
@@ -174,12 +183,12 @@ object CityGenerator {
                     val yaw = atan2(prev.x - endPt.x, prev.z - endPt.z)
                     placements.add(PlacedBuilding(mesh, endPt.x, 0.0f, endPt.z, yaw, 1.0f))
                     footprints.add(PlacedFootprint(endPt.x, endPt.z, radius + 1.2f))
-                    placedHouses++
+                    placedBuildings++
                 }
             }
         }
 
-        // 5. Collect street lot candidates (weighted so building density is highest near denseCoreCenter)
+        // 5. Collect street lot candidates
         val lotCandidates = mutableListOf<Triple<Float, Float, Float>>()
         for (road in roads) {
             if (road.isSpur || road.isHighway) continue
@@ -200,26 +209,31 @@ object CityGenerator {
                 val midX = (p0.x + p1.x) * 0.5f
                 val midZ = (p0.z + p1.z) * 0.5f
 
-                // Variable building density: higher probability near denseCoreCenter, sparser near outskirts
                 val distCore = hypot(midX - denseCoreCenter.x, midZ - denseCoreCenter.z)
-                val densityProb = (1.0f - (distCore / (halfExtent * 1.05f)) * 0.65f).coerceIn(0.20f, 1.0f)
+                val densityProb = if (isSoviet) 0.90f else (1.0f - (distCore / (halfExtent * 1.05f)) * 0.65f).coerceIn(0.20f, 1.0f)
                 if (rng.nextFloat() > densityProb) continue
 
-                val offset = roadHalfW + 1.38f + rng.nextFloat() * 0.42f
+                // Khrushchevkas are wider/deeper so step back slightly further from the avenue
+                val offset = roadHalfW + (if (isSoviet) 2.15f else 1.38f) + rng.nextFloat() * 0.45f
+                val boundMargin = if (isSoviet) 3.4f else 2.2f
+
                 val lx = midX + nx * offset
                 val lz = midZ + nz * offset
-                if (inBounds(lx, lz, halfExtent - 2.2f)) {
-                    lotCandidates.add(Triple(lx, lz, atan2(-nx, -nz)))
+                if (inBounds(lx, lz, halfExtent - boundMargin)) {
+                    // Align Soviet slabs cleanly parallel or perpendicular to avenue
+                    val yawL = atan2(-nx, -nz) + if (isSoviet && rng.nextFloat() < 0.30f) (Math.PI * 0.5).toFloat() else 0f
+                    lotCandidates.add(Triple(lx, lz, yawL))
                 }
                 val rx = midX - nx * offset
                 val rz = midZ - nz * offset
-                if (inBounds(rx, rz, halfExtent - 2.2f)) {
-                    lotCandidates.add(Triple(rx, rz, atan2(nx, nz)))
+                if (inBounds(rx, rz, halfExtent - boundMargin)) {
+                    val yawR = atan2(nx, nz) + if (isSoviet && rng.nextFloat() < 0.30f) (Math.PI * 0.5).toFloat() else 0f
+                    lotCandidates.add(Triple(rx, rz, yawR))
                 }
             }
         }
 
-        // Pre-compute fixed sort keys so TimSort's comparator contract is strictly satisfied
+        // Pre-compute fixed sort keys (TimSort-safe!)
         val scoredLots = lotCandidates.map { lot ->
             val key = hypot(lot.first - denseCoreCenter.x, lot.second - denseCoreCenter.z) +
                 rng.nextFloat() * halfExtent * 0.45f
@@ -230,51 +244,54 @@ object CityGenerator {
             lotCandidates.add(lot)
         }
 
-        // 6. Place houses with exact segment clearance against ALL roads & highway
-        if (targetHouses > 0 && houseModels.isNotEmpty()) {
+        // 6. Place primary buildings: EXCLUSIVELY Khrushchevkas in Soviet preset, EXCLUSIVELY Houses otherwise!
+        val primaryPool = if (isSoviet) khrushModels else houseModels
+        if (targetBuildings > 0 && primaryPool.isNotEmpty()) {
             for ((lx, lz, yaw) in lotCandidates) {
-                if (placedHouses >= targetHouses) break
-                val model = houseModels[rng.nextInt(houseModels.size)]
+                if (placedBuildings >= targetBuildings) break
+                val model = primaryPool[rng.nextInt(primaryPool.size)]
                 val mesh = repository.loadCityMesh(model)
-                val scale = 0.90f + rng.nextFloat() * 0.20f
-                val radius = max(mesh.widthX, mesh.depthZ) * 0.54f * scale + 0.35f
+                val scale = if (isSoviet) (0.86f + rng.nextFloat() * 0.16f) else (0.90f + rng.nextFloat() * 0.20f)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.53f * scale + (if (isSoviet) 0.55f else 0.35f)
 
                 if (isNearRoadSegments(lx, lz, roads, radius + 0.35f)) continue
                 if (!collides(lx, lz, radius, footprints)) {
                     placements.add(PlacedBuilding(mesh, lx, 0.0f, lz, yaw, scale))
                     footprints.add(PlacedFootprint(lx, lz, radius))
-                    placedHouses++
+                    placedBuildings++
                 }
             }
 
-            // Fill remaining houses biased toward the denser urban core
+            // Infill remaining blocks
             var attempts = 0
-            val maxAttempts = targetHouses * 10
-            while (placedHouses < targetHouses && attempts < maxAttempts) {
+            val maxAttempts = targetBuildings * 10
+            while (placedBuildings < targetBuildings && attempts < maxAttempts) {
                 attempts++
                 val ang = rng.nextFloat() * Math.PI.toFloat() * 2f
-                val r = rng.nextFloat() * halfExtent * 0.72f
+                val r = rng.nextFloat() * halfExtent * (if (isSoviet) 0.80f else 0.72f)
                 val rx = denseCoreCenter.x + cos(ang) * r
                 val rz = denseCoreCenter.z + sin(ang) * r
-                if (!inBounds(rx, rz, halfExtent - 2.4f)) continue
+                val margin = if (isSoviet) 3.4f else 2.4f
+                if (!inBounds(rx, rz, halfExtent - margin)) continue
 
-                val model = houseModels[rng.nextInt(houseModels.size)]
+                val model = primaryPool[rng.nextInt(primaryPool.size)]
                 val mesh = repository.loadCityMesh(model)
-                val scale = 0.88f + rng.nextFloat() * 0.20f
-                val radius = max(mesh.widthX, mesh.depthZ) * 0.54f * scale + 0.40f
+                val scale = if (isSoviet) (0.86f + rng.nextFloat() * 0.16f) else (0.88f + rng.nextFloat() * 0.20f)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.53f * scale + (if (isSoviet) 0.60f else 0.40f)
                 if (isNearRoadSegments(rx, rz, roads, radius + 0.40f)) continue
                 if (!collides(rx, rz, radius, footprints)) {
                     val dir = field.sampleDirection(rx, rz, isMajor = true)
-                    placements.add(PlacedBuilding(mesh, rx, 0.0f, rz, atan2(dir.x, dir.z), scale))
+                    val yaw = atan2(dir.x, dir.z) + if (isSoviet && rng.nextFloat() < 0.35f) (Math.PI * 0.5).toFloat() else 0f
+                    placements.add(PlacedBuilding(mesh, rx, 0.0f, rz, yaw, scale))
                     footprints.add(PlacedFootprint(rx, rz, radius))
-                    placedHouses++
+                    placedBuildings++
                 }
             }
         }
 
-        // 7. Place Fenced Agricultural Fields — STRICT 5-point (center + 4 corners) segment check so ZERO fields clip through highway or roads!
+        // 7. Place Fenced Agricultural Fields (only in non-Soviet presets)
         val fields = mutableListOf<FencedField>()
-        if (config.includeFields || isVillage) {
+        if (!isSoviet && (config.includeFields || isVillage)) {
             val desiredFields = if (isVillage) {
                 (config.citySize * 0.55f).toInt().coerceIn(14, 40)
             } else {
@@ -293,8 +310,6 @@ object CityGenerator {
 
                 val dir = field.sampleDirection(fx, fz, isMajor = true)
                 val yaw = atan2(dir.x, dir.z)
-
-                // Exact check: center + all 4 rotated corners + 4 edge midpoints must clear EVERY road/highway segment!
                 if (fieldIntersectsAnyRoad(fx, fz, fw, fd, yaw, roads)) continue
 
                 val col = FIELD_COLORS[rng.nextInt(FIELD_COLORS.size)]
@@ -303,26 +318,87 @@ object CityGenerator {
             }
         }
 
-        // 8. Build unified GPU mesh with clean vertical separation
+        // 8. Scatter ONE consistent Lamp Post model logically along roads in EVERY preset (including Soviet!)
+        val placedLampPositions = mutableListOf<Vec2>()
+        var placedLamps = 0
+        if (chosenLampMesh != null) {
+            val minLampSpacing = 6.4f
+            val minLampSpacingSq = minLampSpacing * minLampSpacing
+            var sideToggle = 1f
+
+            for (road in roads) {
+                if (road.isSpur) continue // Keep rural dirt spurs dark & empty
+                val pts = road.points
+                if (pts.size < 2) continue
+                val roadHalfW = when {
+                    road.isHighway -> 1.08f
+                    road.isMajor -> 0.72f
+                    else -> 0.50f
+                }
+                val stepInterval = if (road.isHighway) 9.5f else 7.6f
+                var accum = stepInterval * 0.5f
+
+                for (i in 0 until pts.size - 1) {
+                    val a = pts[i]
+                    val b = pts[i + 1]
+                    val segLen = hypot(b.x - a.x, b.z - a.z)
+                    if (segLen < 0.2f) continue
+                    val ux = (b.x - a.x) / segLen
+                    val uz = (b.z - a.z) / segLen
+                    val nx = -uz
+                    val nz = ux
+
+                    accum += segLen
+                    if (accum >= stepInterval) {
+                        accum -= stepInterval
+                        sideToggle = -sideToggle
+                        val lx = (a.x + b.x) * 0.5f + nx * sideToggle * (roadHalfW + 0.34f)
+                        val lz = (a.z + b.z) * 0.5f + nz * sideToggle * (roadHalfW + 0.34f)
+                        if (!inBounds(lx, lz, halfExtent - 1.2f)) continue
+
+                        // Ensure streets are never crowded with lamps & lamps never sit inside another road or building
+                        var tooCloseLamp = false
+                        for (lp in placedLampPositions) {
+                            val dx = lx - lp.x
+                            val dz = lz - lp.z
+                            if (dx * dx + dz * dz < minLampSpacingSq) {
+                                tooCloseLamp = true
+                                break
+                            }
+                        }
+                        if (tooCloseLamp) continue
+                        if (collides(lx, lz, 0.35f, footprints)) continue
+                        if (isInsideAnyRoadSurface(lx, lz, roads)) continue
+
+                        // Orient lamp +Z arm toward the road centerline
+                        val yaw = atan2(-sideToggle * nx, -sideToggle * nz)
+                        placements.add(PlacedBuilding(chosenLampMesh, lx, 0.0f, lz, yaw, 1.0f))
+                        placedLampPositions.add(Vec2(lx, lz))
+                        placedLamps++
+                    }
+                }
+            }
+        }
+
+        // 9. Build unified GPU mesh with clean vertical separation
         val posOut = FloatList(65536)
         val normOut = FloatList(65536)
         val colOut = FloatList(65536)
 
-        // Layer 0: Ground plate (top at y = 0.0f)
         val groundSize = halfExtent * 2f + 4f
-        appendBox(posOut, normOut, colOut, 0f, -0.8f, 0f, groundSize, 0.8f, groundSize, 0.34f, 0.68f, 0.28f)
+        val gr = if (isSoviet) 0.36f else 0.34f
+        val gg = if (isSoviet) 0.58f else 0.68f
+        val gb = if (isSoviet) 0.30f else 0.28f
+        appendBox(posOut, normOut, colOut, 0f, -0.8f, 0f, groundSize, 0.8f, groundSize, gr, gg, gb)
 
-        // Layer 1: Fenced agricultural fields (y = 0.06f)
         for (f in fields) {
             appendFencedField(posOut, normOut, colOut, f)
         }
 
-        // Layer 2: Cathedral stone plazas (y = 0.09f)
         for (plaza in plazas) {
             appendOctagonSlab(posOut, normOut, colOut, plaza.x, 0.0f, 0.09f, plaza.z, plaza.radius, 0.78f, 0.75f, 0.68f)
         }
 
-        // Layer 3: Continuous Mitered Road Ribbons + Curvy Highway with dashed centerline
         var totalRoadSegments = 0
         for (road in roads) {
             val halfW = when {
@@ -363,12 +439,10 @@ object CityGenerator {
             }
         }
 
-        // Layer 3b: Crisp white road markings (stop bar + zebra crosswalk) where streets meet the highway!
         for (j in junctions) {
             appendJunctionMarkings(posOut, normOut, colOut, j, yMark = 0.186f)
         }
 
-        // Layer 4: All 3D Cathedrals and Houses
         for (b in placements) {
             appendTransformedMesh(posOut, normOut, colOut, b.mesh, b.x, b.y, b.z, b.yawRad, b.scale)
         }
@@ -391,18 +465,34 @@ object CityGenerator {
 
         return GeneratedCityResult(
             mesh = cityMesh,
-            placedHouses = placedHouses,
+            placedHouses = placedBuildings,
             placedCathedrals = placedCathedrals,
             placedFields = fields.size,
+            placedLamps = placedLamps,
             roadSegments = totalRoadSegments,
+            isSovietMode = isSoviet,
             seedUsed = config.seed
         )
     }
 
-    /**
-     * Tests the field center, 4 corners, and 4 edge midpoints against every road/highway
-     * segment using exact point-to-segment distance — guaranteeing ZERO clipping through highways!
-     */
+    private fun isInsideAnyRoadSurface(px: Float, pz: Float, roads: List<RoadPolyline>): Boolean {
+        for (road in roads) {
+            val roadHalfW = when {
+                road.isHighway -> 1.10f
+                road.isMajor -> 0.74f
+                road.isSpur -> 0.46f
+                else -> 0.52f
+            }
+            val pts = road.points
+            for (i in 0 until pts.size - 1) {
+                if (TensorField.distPointToSegment(px, pz, pts[i], pts[i + 1]) < roadHalfW + 0.08f) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun fieldIntersectsAnyRoad(
         fx: Float,
         fz: Float,
@@ -453,9 +543,6 @@ object CityGenerator {
         return false
     }
 
-    /**
-     * Renders crisp dashed white highway center-line stripes along the curved highway.
-     */
     private fun appendDashedCenterline(
         posOut: FloatList,
         normOut: FloatList,
@@ -499,9 +586,6 @@ object CityGenerator {
         }
     }
 
-    /**
-     * Draws a crisp white stop bar + 4-stripe zebra crosswalk right where a street meets the highway.
-     */
     private fun appendJunctionMarkings(
         posOut: FloatList,
         normOut: FloatList,
@@ -509,14 +593,12 @@ object CityGenerator {
         j: HighwayJunction,
         yMark: Float
     ) {
-        // Approach vector points INTO the highway; step back from highway center to the street throat
         val backDist = 1.22f
         val tx = j.approachDirX
         val tz = j.approachDirZ
         val nx = -tz
         val nz = tx
 
-        // 1. Solid white stop bar across street width
         val stopCx = j.x - tx * backDist
         val stopCz = j.z - tz * backDist
         val barHalf = j.streetHalfW * 0.88f
@@ -527,12 +609,11 @@ object CityGenerator {
             halfW = 0.09f, y = yMark, r = 0.94f, g = 0.95f, bCol = 0.96f
         )
 
-        // 2. Zebra crosswalk bars slightly behind the stop line
         val crossCx = j.x - tx * (backDist + 0.56f)
         val crossCz = j.z - tz * (backDist + 0.56f)
         val stripeCount = 4
         for (k in 0 until stripeCount) {
-            val frac = (k.toFloat() / (stripeCount - 1).toFloat()) * 2f - 1f // -1..+1
+            val frac = (k.toFloat() / (stripeCount - 1).toFloat()) * 2f - 1f
             val lat = frac * (j.streetHalfW * 0.68f)
             val sx = crossCx + nx * lat
             val sz = crossCz + nz * lat

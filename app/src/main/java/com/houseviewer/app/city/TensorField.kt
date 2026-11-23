@@ -4,7 +4,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
@@ -27,8 +26,8 @@ data class HighwayJunction(
 )
 
 /**
- * 2D Symmetric Traceless Tensor Field for procedural urban & village road networks
- * with organic curved bypass highways, variable urban density, and junction detection.
+ * 2D Symmetric Traceless Tensor Field for procedural urban, village, and Soviet
+ * microrayon road networks with organic bypass highways and junction detection.
  */
 class TensorField(
     private val halfExtent: Float,
@@ -76,6 +75,16 @@ class TensorField(
                 fields.add(BasisField(denseCoreCenter.x, denseCoreCenter.z, false, baseAngle, halfExtent * 1.5f, 1.25f))
                 fields.add(BasisField(halfExtent * 0.5f, -halfExtent * 0.5f, false, baseAngle + 0.24f, halfExtent * 0.9f, 0.45f))
             }
+            TensorFieldStyle.SOVIET_MICRORAYON -> {
+                // Predominantly straight orthogonal Soviet avenues with VERY rare localized radial square (~14% chance)
+                val gridAngle = (rng.nextInt(4) * (Math.PI * 0.25)).toFloat() + (rng.nextFloat() - 0.5f) * 0.10f
+                fields.add(BasisField(0f, 0f, false, gridAngle, halfExtent * 2.4f, 1.8f))
+                if (rng.nextFloat() < 0.14f) {
+                    val rx = (rng.nextFloat() - 0.5f) * halfExtent * 0.55f
+                    val rz = (rng.nextFloat() - 0.5f) * halfExtent * 0.55f
+                    fields.add(BasisField(rx, rz, true, 0f, halfExtent * 0.26f, 0.70f))
+                }
+            }
         }
     }
 
@@ -116,13 +125,9 @@ class TensorField(
         return Vec2(cos(angle).toFloat(), sin(angle).toFloat())
     }
 
-    /**
-     * Generates an organic, curvy highway bypass that frames roughly half of the dense
-     * urban core (sweeping smoothly from one map border to another), rather than a rigid square.
-     */
     fun buildCurvyBypassHighway(): RoadPolyline {
         val baseAngle = rng.nextFloat() * Math.PI.toFloat() * 2f
-        val sweepSpan = (Math.PI * (0.95 + rng.nextFloat() * 0.35)).toFloat() // ~170° to ~235°
+        val sweepSpan = (Math.PI * (0.95 + rng.nextFloat() * 0.35)).toFloat()
         val startAngle = baseAngle - sweepSpan * 0.5f
         val baseR = halfExtent * (0.58f + rng.nextFloat() * 0.14f)
         val waveAmp1 = halfExtent * (0.07f + rng.nextFloat() * 0.06f)
@@ -142,7 +147,6 @@ class TensorField(
             pts.add(Vec2(px, pz))
         }
 
-        // Extend both ends smoothly out to the map edge so the highway enters and exits cleanly
         val firstExt = extendToMapEdge(pts[1], pts[0], halfExtent + 1.8f)
         val lastExt = extendToMapEdge(pts[pts.lastIndex - 1], pts.last(), halfExtent + 1.8f)
         val full = ArrayList<Vec2>(pts.size + 2)
@@ -168,11 +172,6 @@ class TensorField(
         return Vec2(end.x + ux * step, end.z + uz * step)
     }
 
-    /**
-     * Traces internal city streets concentrated around the dense urban core.
-     * Any street that intersects the curvy bypass highway terminates cleanly at the highway
-     * and records a HighwayJunction for road markings (stop bar + crosswalk).
-     */
     fun traceRoadNetwork(
         spacing: Float,
         highway: RoadPolyline?,
@@ -182,37 +181,47 @@ class TensorField(
         val majorPoints = mutableListOf<Vec2>()
         val minorPoints = mutableListOf<Vec2>()
 
-        // Organic urban radius around denseCoreCenter (tapers naturally instead of square edges)
-        val urbanRadius = if (style == TensorFieldStyle.VILLAGE_FIELDS) halfExtent * 0.56f else halfExtent * 0.78f
-        val stepSize = (spacing * 0.22f).coerceIn(0.95f, 2.0f)
-        val minSepMajor = spacing * 0.84f
-        val minSepMinor = spacing * 0.80f
+        val effectiveSpacing = if (style == TensorFieldStyle.SOVIET_MICRORAYON) {
+            (spacing * 1.28f).coerceIn(8.5f, 16.0f)
+        } else {
+            spacing
+        }
+        val urbanRadius = when (style) {
+            TensorFieldStyle.VILLAGE_FIELDS -> halfExtent * 0.56f
+            TensorFieldStyle.SOVIET_MICRORAYON -> halfExtent * 0.84f
+            else -> halfExtent * 0.78f
+        }
+        val stepSize = (effectiveSpacing * 0.22f).coerceIn(0.95f, 2.2f)
+        val minSepMajor = effectiveSpacing * 0.84f
+        val minSepMinor = effectiveSpacing * 0.80f
         val maxSteps = ((urbanRadius * 2.1f) / stepSize).toInt().coerceIn(22, 85)
 
         val seeds = mutableListOf<Vec2>()
-        for (c in focalCenters) {
-            seeds.add(Vec2(c.x + spacing * 0.55f, c.z + 0.2f))
-            seeds.add(Vec2(c.x - spacing * 0.55f, c.z - 0.2f))
+        if (style != TensorFieldStyle.SOVIET_MICRORAYON) {
+            for (c in focalCenters) {
+                seeds.add(Vec2(c.x + effectiveSpacing * 0.55f, c.z + 0.2f))
+                seeds.add(Vec2(c.x - effectiveSpacing * 0.55f, c.z - 0.2f))
+            }
         }
         var gx = denseCoreCenter.x - urbanRadius
         while (gx < denseCoreCenter.x + urbanRadius) {
             var gz = denseCoreCenter.z - urbanRadius
             while (gz < denseCoreCenter.z + urbanRadius) {
-                val jx = gx + (rng.nextFloat() - 0.5f) * spacing * 0.25f
-                val jz = gz + (rng.nextFloat() - 0.5f) * spacing * 0.25f
+                val jitter = if (style == TensorFieldStyle.SOVIET_MICRORAYON) 0.08f else 0.25f
+                val jx = gx + (rng.nextFloat() - 0.5f) * effectiveSpacing * jitter
+                val jz = gz + (rng.nextFloat() - 0.5f) * effectiveSpacing * jitter
                 val distCore = hypot(jx - denseCoreCenter.x, jz - denseCoreCenter.z)
-                if (distCore < urbanRadius * 0.85f &&
+                if (distCore < urbanRadius * 0.86f &&
                     kotlin.math.abs(jx) < halfExtent - 2.5f &&
                     kotlin.math.abs(jz) < halfExtent - 2.5f
                 ) {
                     seeds.add(Vec2(jx, jz))
                 }
-                gz += spacing
+                gz += effectiveSpacing
             }
-            gx += spacing
+            gx += effectiveSpacing
         }
 
-        // Prioritize seeds closer to denseCoreCenter so urban core is richer and outskirts taper off
         seeds.sortBy { hypot(it.x - denseCoreCenter.x, it.z - denseCoreCenter.z) }
 
         for (seed in seeds) {
@@ -317,7 +326,6 @@ class TensorField(
         for (i in 0 until maxSteps) {
             val next = rk4Step(cur, prevDir, isMajor, step)
 
-            // Check intersection with curvy bypass highway first!
             if (highway != null) {
                 val hit = findPolylineIntersection(cur, next, highway.points)
                 if (hit != null) {
@@ -330,7 +338,6 @@ class TensorField(
                 }
             }
 
-            // Stop smoothly inside organic urban boundary so streets never run off to map edges
             val distCore = hypot(next.x - denseCoreCenter.x, next.z - denseCoreCenter.z)
             if (distCore > urbanRadius ||
                 next.x < -mapLimit || next.x > mapLimit ||
