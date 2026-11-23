@@ -44,7 +44,7 @@
                     android:ellipsize="end"
                     android:maxLines="1"
                     android:textColor="@color/text_primary"
-                    android:textSize="18sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -55,39 +55,56 @@
                     android:textSize="12sp" />
             </LinearLayout>
 
+            <!-- Mode Toggle Button (Models <-> City) -->
+            <TextView
+                android:id="@+id/btnModeToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_filter_selected"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="City"
+                android:textColor="@color/bg_dark"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
             <ImageButton
                 android:id="@+id/btnModelList"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/cd_model_list"
-                android:padding="10dp"
+                android:padding="9dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_list" />
 
             <ImageButton
                 android:id="@+id/btnImportModel"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/cd_import_model"
-                android:padding="10dp"
+                android:padding="9dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_add" />
 
             <ImageButton
                 android:id="@+id/btnMore"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="@string/cd_more_options"
-                android:padding="10dp"
+                android:padding="9dp"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_more" />
         </LinearLayout>
 
-        <!-- Category Filter Chips (All / House / Cathedral / Custom) -->
+        <!-- Category Filter Chips (Viewer Mode) -->
         <HorizontalScrollView
+            android:id="@+id/categoryScrollView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="#99161B22"
@@ -107,7 +124,7 @@
 
     </LinearLayout>
 
-    <!-- Left '<' Navigation Arrow -->
+    <!-- Left '<' Navigation Arrow (Viewer Mode) -->
     <ImageButton
         android:id="@+id/btnPrev"
         android:layout_width="56dp"
@@ -120,7 +137,7 @@
         android:scaleType="centerInside"
         android:src="@drawable/ic_chevron_left" />
 
-    <!-- Right '>' Navigation Arrow -->
+    <!-- Right '>' Navigation Arrow (Viewer Mode) -->
     <ImageButton
         android:id="@+id/btnNext"
         android:layout_width="56dp"
@@ -133,20 +150,68 @@
         android:scaleType="centerInside"
         android:src="@drawable/ic_chevron_right" />
 
-    <!-- Bottom HUD Hint Pill -->
-    <TextView
-        android:id="@+id/tvHint"
+    <!-- Bottom Controls Container -->
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginBottom="20dp"
-        android:background="@drawable/bg_pill_dark"
-        android:paddingStart="16dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="8dp"
-        android:text="@string/hint_controls"
-        android:textColor="@color/text_secondary"
-        android:textSize="12sp" />
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <!-- City Action Bar (visible only in City Mode) -->
+        <LinearLayout
+            android:id="@+id/cityControlsBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="10dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/btnCitySettings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_pill_dark"
+                android:paddingStart="18dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="10dp"
+                android:text="City Settings"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnCityRegenerate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_filter_selected"
+                android:paddingStart="18dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="18dp"
+                android:paddingBottom="10dp"
+                android:text="Regenerate"
+                android:textColor="@color/bg_dark"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Bottom HUD Hint Pill -->
+        <TextView
+            android:id="@+id/tvHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_pill_dark"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="8dp"
+            android:text="@string/hint_controls"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+    </LinearLayout>
 
 </FrameLayout>

@@ -27,6 +27,9 @@ class HouseRenderer : GLSurfaceView.Renderer {
     var defaultDistance: Float = 4.2f
 
     @Volatile
+    var isCityMode: Boolean = false
+
+    @Volatile
     var isSkyBackground: Boolean = false
 
     private var programId: Int = 0
@@ -47,7 +50,8 @@ class HouseRenderer : GLSurfaceView.Renderer {
     private val vpMatrix = FloatArray(16)
     private val mvpMatrix = FloatArray(16)
 
-    fun setMesh(mesh: MeshData) {
+    fun setMesh(mesh: MeshData, cityMode: Boolean = false) {
+        isCityMode = cityMode
         vertexCount = mesh.vertexCount
         if (vertexCount == 0) {
             positionBuffer = null
@@ -59,14 +63,20 @@ class HouseRenderer : GLSurfaceView.Renderer {
         normalBuffer = toFloatBuffer(mesh.normals)
         colorBuffer = toFloatBuffer(mesh.colors)
 
-        // Adapt default framing distance to true building scale (houses ~4.0, cathedrals ~10-13)
-        defaultDistance = (mesh.boundingExtent * 2.05f).coerceIn(3.8f, 13.5f)
-        distance = defaultDistance
+        if (cityMode) {
+            defaultDistance = (mesh.boundingExtent * 1.38f).coerceIn(24f, 130f)
+            distance = defaultDistance
+            pitchDegrees = 36f
+        } else {
+            defaultDistance = (mesh.boundingExtent * 2.05f).coerceIn(3.8f, 13.5f)
+            distance = defaultDistance
+            if (pitchDegrees > 45f) pitchDegrees = 22f
+        }
     }
 
     fun resetCamera() {
         yawDegrees = 38f
-        pitchDegrees = 22f
+        pitchDegrees = if (isCityMode) 36f else 22f
         distance = defaultDistance
     }
 
@@ -84,7 +94,7 @@ class HouseRenderer : GLSurfaceView.Renderer {
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         GLES20.glViewport(0, 0, width, height)
         val aspect = width.toFloat() / height.coerceAtLeast(1).toFloat()
-        Matrix.perspectiveM(projectionMatrix, 0, 42f, aspect, 0.1f, 120f)
+        Matrix.perspectiveM(projectionMatrix, 0, 44f, aspect, 0.2f, 400f)
     }
 
     override fun onDrawFrame(gl: GL10?) {

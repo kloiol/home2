@@ -39,7 +39,8 @@ object ObjParser {
     fun parseObj(
         objStream: InputStream,
         materials: Map<String, FloatArray>,
-        preserveWorldScale: Boolean = true
+        preserveWorldScale: Boolean = true,
+        alignBottomToZero: Boolean = false
     ): MeshData {
         val rawVerts = ArrayList<FloatArray>()
         val triIndices = ArrayList<IntArray>()
@@ -92,7 +93,7 @@ object ObjParser {
         }
 
         if (rawVerts.isEmpty() || triIndices.isEmpty()) {
-            return MeshData(FloatArray(0), FloatArray(0), FloatArray(0), 0, 2.2f)
+            return MeshData(FloatArray(0), FloatArray(0), FloatArray(0), 0, 2.2f, 2f, 2f, 2f)
         }
 
         var minX = Float.POSITIVE_INFINITY
@@ -112,7 +113,7 @@ object ObjParser {
         }
 
         val cx = (minX + maxX) * 0.5f
-        val cy = (minY + maxY) * 0.5f
+        val cy = if (alignBottomToZero) minY else (minY + maxY) * 0.5f
         val cz = (minZ + maxZ) * 0.5f
         val extent = max(maxX - minX, max(maxY - minY, maxZ - minZ))
         val scale = if (preserveWorldScale) {
@@ -121,6 +122,9 @@ object ObjParser {
             if (extent > 1e-5f) 2.2f / extent else 1.0f
         }
         val finalExtent = (extent * scale).coerceAtLeast(1.2f)
+        val widthX = ((maxX - minX) * scale).coerceAtLeast(0.5f)
+        val heightY = ((maxY - minY) * scale).coerceAtLeast(0.5f)
+        val depthZ = ((maxZ - minZ) * scale).coerceAtLeast(0.5f)
 
         val vertexCount = triIndices.size * 3
         val positions = FloatArray(vertexCount * 3)
@@ -179,6 +183,6 @@ object ObjParser {
             }
         }
 
-        return MeshData(positions, normals, colors, vertexCount, finalExtent)
+        return MeshData(positions, normals, colors, vertexCount, finalExtent, widthX, depthZ, heightY)
     }
 }

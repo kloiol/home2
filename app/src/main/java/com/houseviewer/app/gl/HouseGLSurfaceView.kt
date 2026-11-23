@@ -28,8 +28,10 @@ class HouseGLSurfaceView @JvmOverloads constructor(
             }
 
             override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val maxZoomOut = if (houseRenderer.isCityMode) 220.0f else 24.0f
+                val minZoomIn = if (houseRenderer.isCityMode) 6.0f else 1.8f
                 val nextDist = houseRenderer.distance / detector.scaleFactor
-                houseRenderer.distance = nextDist.coerceIn(1.8f, 24.0f)
+                houseRenderer.distance = nextDist.coerceIn(minZoomIn, maxZoomOut)
                 requestRender()
                 return true
             }
@@ -56,9 +58,9 @@ class HouseGLSurfaceView @JvmOverloads constructor(
         renderMode = RENDERMODE_WHEN_DIRTY
     }
 
-    fun displayMesh(mesh: MeshData) {
+    fun displayMesh(mesh: MeshData, cityMode: Boolean = false) {
         queueEvent {
-            houseRenderer.setMesh(mesh)
+            houseRenderer.setMesh(mesh, cityMode)
             requestRender()
         }
     }
@@ -87,8 +89,10 @@ class HouseGLSurfaceView @JvmOverloads constructor(
                     val dx = event.x - previousX
                     val dy = event.y - previousY
                     houseRenderer.yawDegrees = (houseRenderer.yawDegrees - dx * 0.45f) % 360f
+                    val minPitch = if (houseRenderer.isCityMode) 5f else -75f
+                    val maxPitch = if (houseRenderer.isCityMode) 86f else 82f
                     houseRenderer.pitchDegrees = (houseRenderer.pitchDegrees + dy * 0.35f)
-                        .coerceIn(-75f, 82f)
+                        .coerceIn(minPitch, maxPitch)
                     requestRender()
                 }
                 previousX = event.x
