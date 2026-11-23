@@ -85,6 +85,8 @@ object CityGenerator {
         val khrushModels = allModels.filter { it.category == "khrushchevka" }
         val lampModels = allModels.filter { it.category == "lamp_post" }
         val clutterKhrModels = allModels.filter { it.category == "clutter_khr" }
+        val euIndModels = allModels.filter { it.category == "eu_ind" }
+        val euBusModels = allModels.filter { it.category == "eu_bus" }
 
         // Strictly ONE consistent lamp post model per seed
         val chosenLampMesh: MeshData? = if (lampModels.isNotEmpty()) {
@@ -272,6 +274,83 @@ object CityGenerator {
                     footprints.add(PlacedFootprint(pt.x, pt.z, radius))
                     placedBuildings++
                 }
+            }
+        }
+
+        // 6b. Place EU Industrial buildings (outer fringe) & EU Modern Bus Stations (curbside) in all non-Soviet presets
+        if (!isSoviet && euIndModels.isNotEmpty()) {
+            val desiredInd = if (isVillage) 2 else (plate.radius / 9f).toInt().coerceIn(2, 5)
+            var placedInd = 0
+            // Prefer outer lots furthest from the dense historic center
+            for (idx in lotCandidates.lastIndex downTo 0) {
+                if (placedInd >= desiredInd) break
+                val (lx, lz, yaw) = lotCandidates[idx]
+                val model = euIndModels[rng.nextInt(euIndModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.54f + 0.55f
+                if (!plate.containsInCoverage(lx, lz, radius + 0.5f)) continue
+                if (isNearRoadSegments(lx, lz, roads, radius + 0.40f)) continue
+                if (collides(lx, lz, radius, footprints)) continue
+                placements.add(PlacedBuilding(mesh, lx, 0.0f, lz, yaw, 1.0f))
+                footprints.add(PlacedFootprint(lx, lz, radius))
+                placedInd++
+            }
+            var iAttempts = 0
+            while (placedInd < desiredInd && iAttempts < desiredInd * 20) {
+                iAttempts++
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = 3.2f, rng = rng)
+                val model = euIndModels[rng.nextInt(euIndModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.54f + 0.55f
+                if (!plate.containsInCoverage(pt.x, pt.z, radius + 0.5f)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, radius + 0.40f)) continue
+                if (collides(pt.x, pt.z, radius, footprints)) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
+                placements.add(PlacedBuilding(mesh, pt.x, 0.0f, pt.z, atan2(dir.x, dir.z), 1.0f))
+                footprints.add(PlacedFootprint(pt.x, pt.z, radius))
+                placedInd++
+            }
+        }
+
+        if (!isSoviet && euBusModels.isNotEmpty()) {
+            val desiredBus = if (isVillage) 2 else (plate.radius / 7f).toInt().coerceIn(3, 7)
+            val busPositions = mutableListOf<Vec2>()
+            val minBusSepSq = 9.0f * 9.0f
+            var placedBus = 0
+            for (road in roads) {
+                if (placedBus >= desiredBus) break
+                if (road.isSpur || road.isHighway) continue
+                val pts = road.points
+                if (pts.size < 3) continue
+                val midIdx = pts.size / 2
+                val p0 = pts[midIdx - 1]
+                val p1 = pts[midIdx]
+                val dx = p1.x - p0.x; val dz = p1.z - p0.z
+                val len = hypot(dx, dz)
+                if (len < 0.25f) continue
+                val nx = -dz / len; val nz = dx / len
+                val side = if (rng.nextBoolean()) 1f else -1f
+                val roadHalfW = if (road.isMajor) 0.72f else 0.50f
+                val bx = (p0.x + p1.x) * 0.5f + nx * side * (roadHalfW + 0.85f)
+                val bz = (p0.z + p1.z) * 0.5f + nz * side * (roadHalfW + 0.85f)
+                val model = euBusModels[rng.nextInt(euBusModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.52f + 0.25f
+                if (!plate.containsInCoverage(bx, bz, radius + 0.3f)) continue
+                if (isInsideAnyRoadSurface(bx, bz, roads)) continue
+                if (collides(bx, bz, radius, footprints)) continue
+                var tooCloseBus = false
+                for (bp in busPositions) {
+                    val bdx = bx - bp.x; val bdz = bz - bp.z
+                    if (bdx * bdx + bdz * bdz < minBusSepSq) { tooCloseBus = true; break }
+                }
+                if (tooCloseBus) continue
+                // Orient open +Z boarding side directly toward the road
+                val yaw = atan2(-side * nx, -side * nz)
+                placements.add(PlacedBuilding(mesh, bx, 0.0f, bz, yaw, 1.0f))
+                footprints.add(PlacedFootprint(bx, bz, radius))
+                busPositions.add(Vec2(bx, bz))
+                placedBus++
             }
         }
 
