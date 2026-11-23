@@ -84,6 +84,7 @@ object CityGenerator {
         val cathedralModels = allModels.filter { it.category == "cathedral" }
         val khrushModels = allModels.filter { it.category == "khrushchevka" }
         val lampModels = allModels.filter { it.category == "lamp_post" }
+        val clutterKhrModels = allModels.filter { it.category == "clutter_khr" }
 
         // Strictly ONE consistent lamp post model per seed
         val chosenLampMesh: MeshData? = if (lampModels.isNotEmpty()) {
@@ -300,6 +301,59 @@ object CityGenerator {
                 val col = FIELD_COLORS[rng.nextInt(FIELD_COLORS.size)]
                 fields.add(FencedField(pt.x, pt.z, fw, fd, yaw, col[0], col[1], col[2]))
                 footprints.add(PlacedFootprint(pt.x, pt.z, fRadius))
+            }
+        }
+
+        // 7b. Exclusively in Soviet Microrayon, place courtyard dumpster enclosures (Clutter Khr)
+        if (isSoviet && clutterKhrModels.isNotEmpty()) {
+            val desiredClutter = (placedBuildings / 2).coerceIn(4, 24)
+            val clutterPositions = mutableListOf<Vec2>()
+            val minClutterSepSq = 6.2f * 6.2f
+            var placedClutter = 0
+
+            // Try street-facing courtyard spots first
+            for ((lx, lz, yaw) in lotCandidates) {
+                if (placedClutter >= desiredClutter) break
+                val model = clutterKhrModels[rng.nextInt(clutterKhrModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.56f + 0.35f
+                if (!plate.containsInCoverage(lx, lz, radius + 0.4f)) continue
+                if (isNearRoadSegments(lx, lz, roads, radius + 0.25f)) continue
+                if (collides(lx, lz, radius, footprints)) continue
+                var tooClose = false
+                for (cp in clutterPositions) {
+                    val dx = lx - cp.x; val dz = lz - cp.z
+                    if (dx * dx + dz * dz < minClutterSepSq) { tooClose = true; break }
+                }
+                if (tooClose) continue
+                placements.add(PlacedBuilding(mesh, lx, 0.0f, lz, yaw, 1.0f))
+                footprints.add(PlacedFootprint(lx, lz, radius))
+                clutterPositions.add(Vec2(lx, lz))
+                placedClutter++
+            }
+
+            // Fallback courtyard infill if streets were full of apartment blocks
+            var cAttempts = 0
+            while (placedClutter < desiredClutter && cAttempts < desiredClutter * 20) {
+                cAttempts++
+                val pt = samplePointInsidePlate(plate, useCoverage = true, margin = 2.0f, rng = rng)
+                val model = clutterKhrModels[rng.nextInt(clutterKhrModels.size)]
+                val mesh = repository.loadCityMesh(model)
+                val radius = max(mesh.widthX, mesh.depthZ) * 0.56f + 0.35f
+                if (!plate.containsInCoverage(pt.x, pt.z, radius + 0.4f)) continue
+                if (isNearRoadSegments(pt.x, pt.z, roads, radius + 0.25f)) continue
+                if (collides(pt.x, pt.z, radius, footprints)) continue
+                var tooClose = false
+                for (cp in clutterPositions) {
+                    val dx = pt.x - cp.x; val dz = pt.z - cp.z
+                    if (dx * dx + dz * dz < minClutterSepSq) { tooClose = true; break }
+                }
+                if (tooClose) continue
+                val dir = field.sampleDirection(pt.x, pt.z, isMajor = true)
+                placements.add(PlacedBuilding(mesh, pt.x, 0.0f, pt.z, atan2(dir.x, dir.z), 1.0f))
+                footprints.add(PlacedFootprint(pt.x, pt.z, radius))
+                clutterPositions.add(pt)
+                placedClutter++
             }
         }
 
