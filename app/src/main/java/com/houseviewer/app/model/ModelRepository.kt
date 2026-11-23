@@ -7,6 +7,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipInputStream
 
 class ModelRepository(private val context: Context) {
@@ -14,6 +15,8 @@ class ModelRepository(private val context: Context) {
     private val storageDir: File = File(context.filesDir, "stored_models").apply {
         if (!exists()) mkdirs()
     }
+
+    private val cityMeshCache = ConcurrentHashMap<String, MeshData>()
 
     private val bundleEntries: Map<String, ByteArray> by lazy {
         val map = HashMap<String, ByteArray>()
@@ -99,6 +102,16 @@ class ModelRepository(private val context: Context) {
     }
 
     fun loadMesh(model: HouseModel): MeshData {
+        return loadMeshInternal(model, alignBottomToZero = false)
+    }
+
+    fun loadCityMesh(model: HouseModel): MeshData {
+        return cityMeshCache.getOrPut(model.id) {
+            loadMeshInternal(model, alignBottomToZero = true)
+        }
+    }
+
+    private fun loadMeshInternal(model: HouseModel, alignBottomToZero: Boolean): MeshData {
         return if (model.isBuiltIn) {
             val materials = model.mtlPath?.let { path ->
                 bundleEntries[path]?.let { bytes ->
@@ -108,7 +121,7 @@ class ModelRepository(private val context: Context) {
             val objBytes = bundleEntries[model.objPath]
                 ?: throw IllegalStateException("Missing bundled model: ${model.objPath}")
             ByteArrayInputStream(objBytes).use {
-                ObjParser.parseObj(it, materials, preserveWorldScale = true)
+                ObjParser.parseObj(it, materials, preserveWorldScale = true, alignBottomToZero = alignBottomToZero)
             }
         } else {
             val materials = model.mtlPath?.let { path ->
@@ -116,7 +129,7 @@ class ModelRepository(private val context: Context) {
                     .getOrDefault(emptyMap())
             } ?: emptyMap()
             FileInputStream(model.objPath).use {
-                ObjParser.parseObj(it, materials, preserveWorldScale = false)
+                ObjParser.parseObj(it, materials, preserveWorldScale = false, alignBottomToZero = alignBottomToZero)
             }
         }
     }
@@ -156,6 +169,7 @@ class ModelRepository(private val context: Context) {
 
     fun deleteCustomModel(model: HouseModel): Boolean {
         if (model.isBuiltIn) return false
+        cityMeshCache.remove(model.id)
         val objFile = File(model.objPath)
         val mtlFile = model.mtlPath?.let { File(it) }
         mtlFile?.delete()
