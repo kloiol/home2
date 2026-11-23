@@ -6,6 +6,7 @@ import android.text.InputType
 import android.util.TypedValue
 import android.view.View
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -24,11 +25,14 @@ import androidx.core.content.ContextCompat
 import com.houseviewer.app.city.CityConfig
 import com.houseviewer.app.city.CityGenerator
 import com.houseviewer.app.city.GeneratedCityResult
+import com.houseviewer.app.city.PlateShape
 import com.houseviewer.app.city.TensorFieldStyle
 import com.houseviewer.app.gl.HouseGLSurfaceView
 import com.houseviewer.app.model.HouseModel
 import com.houseviewer.app.model.ModelRepository
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
 
@@ -211,7 +215,7 @@ class MainActivity : AppCompatActivity() {
         isGeneratingCity = true
         val activeConfig = cityConfig
         tvModelTitle.text = "Generating Tensor City..."
-        tvModelSubtitle.text = "Tracing smooth roads & placing ${activeConfig.houseCount} houses, ${activeConfig.cathedralCount} cathedrals"
+        tvModelSubtitle.text = "${activeConfig.plateShape.label} · ${(activeConfig.areaCoverage * 100).roundToInt()}% area"
         btnCityRegenerate.isEnabled = false
 
         cityExecutor.execute {
@@ -244,7 +248,14 @@ class MainActivity : AppCompatActivity() {
             TensorFieldStyle.MIXED_ORGANIC -> "Mixed"
             TensorFieldStyle.SOVIET_MICRORAYON -> "Soviet"
         }
-        tvModelTitle.text = "Tensor City ($presetShort)"
+        val shapeShort = when (cityConfig.plateShape) {
+            PlateShape.SQUARE -> "Square"
+            PlateShape.HEXAGON -> "Hex"
+            PlateShape.SEMICIRCLE -> "Semi"
+            PlateShape.FIVE_POINT_STAR -> "Star"
+            PlateShape.RHOMBUS -> "Rhombus"
+        }
+        tvModelTitle.text = "$presetShort · $shapeShort"
         tvModelSubtitle.text = if (result.isSovietMode) {
             "${result.placedHouses} blocks · ${result.placedLamps} lamps · ${result.mesh.triangleCount} tris"
         } else {
@@ -261,35 +272,108 @@ class MainActivity : AppCompatActivity() {
         }
         scroll.addView(container)
 
-        // 1. City Size (30 .. 110)
-        var sizeVal = cityConfig.citySize.toInt().coerceIn(30, 110)
-        val tvSize = makeLabel("City Size: $sizeVal x $sizeVal")
-        val sbSize = SeekBar(this).apply {
-            max = 80
-            progress = sizeVal - 30
+        // 1. Plate Shape Selector
+        container.addView(makeLabel("Plate Shape:"))
+        val shapes = PlateShape.values()
+        val spShape = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                shapes.map { it.label }
+            )
+            setSelection(shapes.indexOf(cityConfig.plateShape).coerceAtLeast(0))
+        }
+        container.addView(spShape)
+
+        // 2. Plate Radius (18 .. 62)
+        var radiusVal = cityConfig.plateRadius.roundToInt().coerceIn(18, 62)
+        val tvRadius = makeLabel("Plate Radius: $radiusVal units")
+        val sbRadius = SeekBar(this).apply {
+            max = 44
+            progress = radiusVal - 18
             setOnSeekBarChangeListener(simpleSeekListener { p ->
-                sizeVal = p + 30
-                tvSize.text = "City Size: $sizeVal x $sizeVal"
+                radiusVal = p + 18
+                tvRadius.text = "Plate Radius: $radiusVal units"
             })
         }
-        container.addView(tvSize)
-        container.addView(sbSize)
+        container.addView(tvRadius)
+        container.addView(sbRadius)
 
-        // 2. Number of Houses (10 .. 160)
+        // 3. Diagonal / Aspect Ratio (0.45 .. 1.55)
+        var diagVal = cityConfig.diagonalRatio.coerceIn(0.45f, 1.55f)
+        val tvDiag = makeLabel("Diagonals / Aspect Ratio: ${"%.2f".format(diagVal)}")
+        val sbDiag = SeekBar(this).apply {
+            max = 110
+            progress = ((diagVal - 0.45f) * 100f).roundToInt().coerceIn(0, 110)
+            setOnSeekBarChangeListener(simpleSeekListener { p ->
+                diagVal = 0.45f + p / 100f
+                tvDiag.text = "Diagonals / Aspect Ratio: ${"%.2f".format(diagVal)}"
+            })
+        }
+        container.addView(tvDiag)
+        container.addView(sbDiag)
+
+        // 4. Edge Curvature (-0.25 .. +0.40)
+        var curvVal = cityConfig.edgeCurvature.coerceIn(-0.25f, 0.40f)
+        val tvCurv = makeLabel("Edge Curvature: ${"%.2f".format(curvVal)}")
+        val sbCurv = SeekBar(this).apply {
+            max = 65
+            progress = ((curvVal + 0.25f) * 100f).roundToInt().coerceIn(0, 65)
+            setOnSeekBarChangeListener(simpleSeekListener { p ->
+                curvVal = -0.25f + p / 100f
+                tvCurv.text = "Edge Curvature: ${"%.2f".format(curvVal)}"
+            })
+        }
+        container.addView(tvCurv)
+        container.addView(sbCurv)
+
+        // 5. Surface Area Coverage (25% .. 100%)
+        var covPct = (cityConfig.areaCoverage * 100f).roundToInt().coerceIn(25, 100)
+        val tvCov = makeLabel("City Surface Area Coverage: $covPct%")
+        val sbCov = SeekBar(this).apply {
+            max = 75
+            progress = covPct - 25
+            setOnSeekBarChangeListener(simpleSeekListener { p ->
+                covPct = p + 25
+                tvCov.text = "City Surface Area Coverage: $covPct%"
+            })
+        }
+        container.addView(tvCov)
+        container.addView(sbCov)
+
+        // Button: Randomize Geometric Parameters on the spot!
+        val btnRandomGeom = Button(this).apply {
+            text = "Randomize Plate Geometry"
+            setOnClickListener {
+                val r = Random(System.currentTimeMillis())
+                spShape.setSelection(r.nextInt(shapes.size))
+                val rndRad = 22 + r.nextInt(32)
+                sbRadius.progress = rndRad - 18
+                val rndDiag = 55 + r.nextInt(85) // 0.55 .. 1.40
+                sbDiag.progress = (rndDiag - 45).coerceIn(0, 110)
+                val rndCurv = r.nextInt(60) // -0.25 .. +0.35
+                sbCurv.progress = rndCurv
+                val rndCov = 45 + r.nextInt(51) // 45% .. 95%
+                sbCov.progress = (rndCov - 25).coerceIn(0, 75)
+            }
+        }
+        container.addView(btnRandomGeom)
+
+        // 6. Number of Buildings (10 .. 160)
         var housesVal = cityConfig.houseCount.coerceIn(10, 160)
-        val tvHouses = makeLabel("Buildings (Houses): $housesVal")
+        val tvHouses = makeLabel("Buildings Count: $housesVal")
         val sbHouses = SeekBar(this).apply {
             max = 150
             progress = housesVal - 10
             setOnSeekBarChangeListener(simpleSeekListener { p ->
                 housesVal = p + 10
-                tvHouses.text = "Buildings (Houses): $housesVal"
+                tvHouses.text = "Buildings Count: $housesVal"
             })
         }
         container.addView(tvHouses)
         container.addView(sbHouses)
 
-        // 3. Number of Cathedrals (0 .. 6)
+        // 7. Number of Cathedrals (0 .. 6)
         var cathVal = cityConfig.cathedralCount.coerceIn(0, 6)
         val tvCath = makeLabel("Gothic Cathedrals: $cathVal")
         val sbCath = SeekBar(this).apply {
@@ -303,7 +387,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(tvCath)
         container.addView(sbCath)
 
-        // 4. Road Spacing (5 .. 13)
+        // 8. Road Spacing (5 .. 13)
         var spacingVal = cityConfig.roadSpacing.toInt().coerceIn(5, 13)
         val tvSpacing = makeLabel("Road Spacing: $spacingVal units")
         val sbSpacing = SeekBar(this).apply {
@@ -317,7 +401,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(tvSpacing)
         container.addView(sbSpacing)
 
-        // 5. Tensor Field Layout Preset (includes new Rural Village & Fields)
+        // 9. Tensor Field Layout Preset
         container.addView(makeLabel("Layout Preset:"))
         val styles = TensorFieldStyle.values()
         val spinner = Spinner(this).apply {
@@ -330,7 +414,7 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(spinner)
 
-        // 6. Fenced Agricultural Fields Toggle
+        // 10. Fenced Fields Toggle
         val cbFields = CheckBox(this).apply {
             text = "Include fenced agricultural fields"
             isChecked = cityConfig.includeFields
@@ -338,7 +422,7 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(cbFields)
 
-        // 7. Optional Seed
+        // 11. Optional Seed
         container.addView(makeLabel("Seed (leave blank for random):"))
         val etSeed = EditText(this).apply {
             hint = "Random seed"
@@ -353,7 +437,11 @@ class MainActivity : AppCompatActivity() {
                 val seedInput = etSeed.text?.toString()?.trim()?.toLongOrNull()
                     ?: System.currentTimeMillis()
                 cityConfig = CityConfig(
-                    citySize = sizeVal.toFloat(),
+                    plateShape = shapes[spShape.selectedItemPosition],
+                    plateRadius = radiusVal.toFloat(),
+                    diagonalRatio = diagVal,
+                    edgeCurvature = curvVal,
+                    areaCoverage = covPct / 100f,
                     houseCount = housesVal,
                     cathedralCount = cathVal,
                     fieldStyle = styles[spinner.selectedItemPosition],

@@ -4,7 +4,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
-import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -26,11 +25,12 @@ data class HighwayJunction(
 )
 
 /**
- * 2D Symmetric Traceless Tensor Field for procedural urban, village, and Soviet
- * microrayon road networks with organic bypass highways and junction detection.
+ * 2D Symmetric Traceless Tensor Field that bends smoothly to conform to any
+ * parametric CityPlate shape (Square, Hexagon, Semicircle, 5-Pointed Star, Rhombus)
+ * and respects the user's surface-area coverage setting.
  */
 class TensorField(
-    private val halfExtent: Float,
+    val plate: CityPlate,
     private val style: TensorFieldStyle,
     val focalCenters: List<Vec2>,
     val denseCoreCenter: Vec2,
@@ -46,43 +46,43 @@ class TensorField(
     )
 
     private val fields = mutableListOf<BasisField>()
+    private val refRadius = plate.maxRadius * plate.coverageLinearScale
 
     init {
         val baseAngle = rng.nextFloat() * Math.PI.toFloat()
         when (style) {
             TensorFieldStyle.RADIAL_OLD_TOWN -> {
                 for (center in focalCenters) {
-                    fields.add(BasisField(center.x, center.z, true, 0f, halfExtent * 0.90f, 1.4f))
+                    fields.add(BasisField(center.x, center.z, true, 0f, refRadius * 0.90f, 1.4f))
                 }
-                fields.add(BasisField(0f, 0f, false, baseAngle, halfExtent * 1.4f, 0.25f))
+                fields.add(BasisField(0f, 0f, false, baseAngle, refRadius * 1.4f, 0.25f))
             }
             TensorFieldStyle.GRID_PLAZAS -> {
-                fields.add(BasisField(0f, 0f, false, baseAngle, halfExtent * 1.8f, 1.3f))
+                fields.add(BasisField(0f, 0f, false, baseAngle, refRadius * 1.8f, 1.3f))
                 for (center in focalCenters) {
-                    fields.add(BasisField(center.x, center.z, true, 0f, halfExtent * 0.42f, 0.75f))
+                    fields.add(BasisField(center.x, center.z, true, 0f, refRadius * 0.42f, 0.75f))
                 }
             }
             TensorFieldStyle.MIXED_ORGANIC -> {
                 for (center in focalCenters) {
-                    fields.add(BasisField(center.x, center.z, true, 0f, halfExtent * 0.62f, 1.15f))
+                    fields.add(BasisField(center.x, center.z, true, 0f, refRadius * 0.62f, 1.15f))
                 }
                 val q1Angle = baseAngle
                 val q2Angle = baseAngle + 0.55f + rng.nextFloat() * 0.45f
-                fields.add(BasisField(-halfExtent * 0.42f, -halfExtent * 0.35f, false, q1Angle, halfExtent * 0.85f, 0.9f))
-                fields.add(BasisField(halfExtent * 0.42f, halfExtent * 0.35f, false, q2Angle, halfExtent * 0.85f, 0.9f))
+                fields.add(BasisField(-refRadius * 0.42f, -refRadius * 0.35f, false, q1Angle, refRadius * 0.85f, 0.9f))
+                fields.add(BasisField(refRadius * 0.42f, refRadius * 0.35f, false, q2Angle, refRadius * 0.85f, 0.9f))
             }
             TensorFieldStyle.VILLAGE_FIELDS -> {
-                fields.add(BasisField(denseCoreCenter.x, denseCoreCenter.z, false, baseAngle, halfExtent * 1.5f, 1.25f))
-                fields.add(BasisField(halfExtent * 0.5f, -halfExtent * 0.5f, false, baseAngle + 0.24f, halfExtent * 0.9f, 0.45f))
+                fields.add(BasisField(denseCoreCenter.x, denseCoreCenter.z, false, baseAngle, refRadius * 1.5f, 1.25f))
+                fields.add(BasisField(refRadius * 0.5f, -refRadius * 0.5f, false, baseAngle + 0.24f, refRadius * 0.9f, 0.45f))
             }
             TensorFieldStyle.SOVIET_MICRORAYON -> {
-                // Predominantly straight orthogonal Soviet avenues with VERY rare localized radial square (~14% chance)
                 val gridAngle = (rng.nextInt(4) * (Math.PI * 0.25)).toFloat() + (rng.nextFloat() - 0.5f) * 0.10f
-                fields.add(BasisField(0f, 0f, false, gridAngle, halfExtent * 2.4f, 1.8f))
+                fields.add(BasisField(0f, 0f, false, gridAngle, refRadius * 2.4f, 1.8f))
                 if (rng.nextFloat() < 0.14f) {
-                    val rx = (rng.nextFloat() - 0.5f) * halfExtent * 0.55f
-                    val rz = (rng.nextFloat() - 0.5f) * halfExtent * 0.55f
-                    fields.add(BasisField(rx, rz, true, 0f, halfExtent * 0.26f, 0.70f))
+                    val rx = (rng.nextFloat() - 0.5f) * refRadius * 0.50f
+                    val rz = (rng.nextFloat() - 0.5f) * refRadius * 0.50f
+                    fields.add(BasisField(rx, rz, true, 0f, refRadius * 0.26f, 0.70f))
                 }
             }
         }
@@ -114,6 +114,18 @@ class TensorField(
             }
         }
 
+        // Gently bend tensor field along the plate's outer contour when near the shape border
+        if (style != TensorFieldStyle.SOVIET_MICRORAYON) {
+            val (edgeTx, edgeTz, edgeDist) = plate.nearestEdgeTangentAndDist(x, z)
+            val influenceBand = (plate.maxRadius * 0.28f).coerceIn(4.0f, 12.0f)
+            if (edgeDist < influenceBand) {
+                val edgeW = ((1.0f - edgeDist / influenceBand) * 0.85f).toDouble()
+                val edgeAngle = atan2(edgeTz.toDouble(), edgeTx.toDouble())
+                sumA += edgeW * cos(2.0 * edgeAngle)
+                sumB += edgeW * sin(2.0 * edgeAngle)
+            }
+        }
+
         if (sumA * sumA + sumB * sumB < 1e-8) {
             return if (isMajor) Vec2(1f, 0f) else Vec2(0f, 1f)
         }
@@ -125,51 +137,33 @@ class TensorField(
         return Vec2(cos(angle).toFloat(), sin(angle).toFloat())
     }
 
-    fun buildCurvyBypassHighway(): RoadPolyline {
-        val baseAngle = rng.nextFloat() * Math.PI.toFloat() * 2f
-        val sweepSpan = (Math.PI * (0.95 + rng.nextFloat() * 0.35)).toFloat()
-        val startAngle = baseAngle - sweepSpan * 0.5f
-        val baseR = halfExtent * (0.58f + rng.nextFloat() * 0.14f)
-        val waveAmp1 = halfExtent * (0.07f + rng.nextFloat() * 0.06f)
-        val waveAmp2 = halfExtent * (0.04f + rng.nextFloat() * 0.04f)
-        val phase1 = rng.nextFloat() * Math.PI.toFloat() * 2f
-        val phase2 = rng.nextFloat() * Math.PI.toFloat() * 2f
+    /**
+     * Builds a curvy bypass highway that conforms smoothly to roughly half of the plate's
+     * contour (scaled to the active city coverage zone) so it bends naturally around
+     * hexagons, semicircles, rhombuses, and 5-pointed stars without ever leaving the plate!
+     */
+    fun buildCurvyBypassHighway(): RoadPolyline? {
+        val poly = plate.boundary
+        if (poly.size < 4) return null
 
-        val pts = mutableListOf<Vec2>()
-        val steps = 32
-        for (i in 0..steps) {
-            val t = i.toFloat() / steps.toFloat()
-            val ang = startAngle + sweepSpan * t
-            val wobble = sin(ang * 2.0f + phase1) * waveAmp1 + cos(ang * 3.0f + phase2) * waveAmp2
-            val r = (baseR + wobble).coerceIn(halfExtent * 0.42f, halfExtent * 0.86f)
-            val px = (denseCoreCenter.x + cos(ang) * r).coerceIn(-halfExtent + 1.5f, halfExtent - 1.5f)
-            val pz = (denseCoreCenter.z + sin(ang) * r).coerceIn(-halfExtent + 1.5f, halfExtent - 1.5f)
-            pts.add(Vec2(px, pz))
+        // Walk along ~48% to ~62% of the plate perimeter inset inside the coverage zone
+        val insetScale = (plate.coverageLinearScale * 0.86f).coerceIn(0.32f, 0.90f)
+        val n = poly.size
+        val startIdx = rng.nextInt(n)
+        val spanCount = ((n * (0.46f + rng.nextFloat() * 0.16f)).toInt()).coerceIn(3, n - 1)
+
+        val raw = mutableListOf<Vec2>()
+        for (k in 0..spanCount) {
+            val p = poly[(startIdx + k) % n]
+            val wx = p.x * insetScale
+            val wz = p.z * insetScale
+            if (plate.contains(wx, wz, margin = 1.6f)) {
+                raw.add(Vec2(wx, wz))
+            }
         }
-
-        val firstExt = extendToMapEdge(pts[1], pts[0], halfExtent + 1.8f)
-        val lastExt = extendToMapEdge(pts[pts.lastIndex - 1], pts.last(), halfExtent + 1.8f)
-        val full = ArrayList<Vec2>(pts.size + 2)
-        full.add(firstExt)
-        full.addAll(pts)
-        full.add(lastExt)
-
-        return RoadPolyline(smoothPolyline(full, iterations = 2), isMajor = true, isHighway = true)
-    }
-
-    private fun extendToMapEdge(prev: Vec2, end: Vec2, edgeLimit: Float): Vec2 {
-        val dx = end.x - prev.x
-        val dz = end.z - prev.z
-        val len = hypot(dx, dz).coerceAtLeast(1e-4f)
-        val ux = dx / len
-        val uz = dz / len
-        var tMin = Float.POSITIVE_INFINITY
-        if (ux > 1e-4f) tMin = min(tMin, (edgeLimit - end.x) / ux)
-        if (ux < -1e-4f) tMin = min(tMin, (-edgeLimit - end.x) / ux)
-        if (uz > 1e-4f) tMin = min(tMin, (edgeLimit - end.z) / uz)
-        if (uz < -1e-4f) tMin = min(tMin, (-edgeLimit - end.z) / uz)
-        val step = tMin.coerceIn(1.0f, halfExtent * 1.5f)
-        return Vec2(end.x + ux * step, end.z + uz * step)
+        if (raw.size < 3) return null
+        val smooth = smoothPolyline(raw, iterations = 2)
+        return RoadPolyline(smooth, isMajor = true, isHighway = true)
     }
 
     fun traceRoadNetwork(
@@ -186,35 +180,30 @@ class TensorField(
         } else {
             spacing
         }
-        val urbanRadius = when (style) {
-            TensorFieldStyle.VILLAGE_FIELDS -> halfExtent * 0.56f
-            TensorFieldStyle.SOVIET_MICRORAYON -> halfExtent * 0.84f
-            else -> halfExtent * 0.78f
-        }
         val stepSize = (effectiveSpacing * 0.22f).coerceIn(0.95f, 2.2f)
         val minSepMajor = effectiveSpacing * 0.84f
         val minSepMinor = effectiveSpacing * 0.80f
-        val maxSteps = ((urbanRadius * 2.1f) / stepSize).toInt().coerceIn(22, 85)
+        val maxSteps = ((refRadius * 2.4f) / stepSize).toInt().coerceIn(22, 90)
+        val roadMargin = 2.0f
 
         val seeds = mutableListOf<Vec2>()
         if (style != TensorFieldStyle.SOVIET_MICRORAYON) {
             for (c in focalCenters) {
-                seeds.add(Vec2(c.x + effectiveSpacing * 0.55f, c.z + 0.2f))
-                seeds.add(Vec2(c.x - effectiveSpacing * 0.55f, c.z - 0.2f))
+                val p1 = Vec2(c.x + effectiveSpacing * 0.55f, c.z + 0.2f)
+                val p2 = Vec2(c.x - effectiveSpacing * 0.55f, c.z - 0.2f)
+                if (plate.containsInCoverage(p1.x, p1.z, roadMargin)) seeds.add(p1)
+                if (plate.containsInCoverage(p2.x, p2.z, roadMargin)) seeds.add(p2)
             }
         }
-        var gx = denseCoreCenter.x - urbanRadius
-        while (gx < denseCoreCenter.x + urbanRadius) {
-            var gz = denseCoreCenter.z - urbanRadius
-            while (gz < denseCoreCenter.z + urbanRadius) {
+
+        var gx = plate.minX + effectiveSpacing * 0.5f
+        while (gx < plate.maxX - effectiveSpacing * 0.5f) {
+            var gz = plate.minZ + effectiveSpacing * 0.5f
+            while (gz < plate.maxZ - effectiveSpacing * 0.5f) {
                 val jitter = if (style == TensorFieldStyle.SOVIET_MICRORAYON) 0.08f else 0.25f
                 val jx = gx + (rng.nextFloat() - 0.5f) * effectiveSpacing * jitter
                 val jz = gz + (rng.nextFloat() - 0.5f) * effectiveSpacing * jitter
-                val distCore = hypot(jx - denseCoreCenter.x, jz - denseCoreCenter.z)
-                if (distCore < urbanRadius * 0.86f &&
-                    kotlin.math.abs(jx) < halfExtent - 2.5f &&
-                    kotlin.math.abs(jz) < halfExtent - 2.5f
-                ) {
+                if (plate.containsInCoverage(jx, jz, roadMargin)) {
                     seeds.add(Vec2(jx, jz))
                 }
                 gz += effectiveSpacing
@@ -228,7 +217,7 @@ class TensorField(
             if (isTooClose(seed, majorPoints, minSepMajor)) continue
             if (highway != null && distPointToPolyline(seed, highway.points) < 2.2f) continue
             val raw = traceBidirectional(
-                seed, isMajor = true, stepSize, maxSteps, urbanRadius,
+                seed, isMajor = true, stepSize, maxSteps, roadMargin,
                 majorPoints, minSepMajor * 0.80f, highway, 0.72f, junctionsOut
             )
             if (raw.size >= 4) {
@@ -242,7 +231,7 @@ class TensorField(
             if (isTooClose(seed, minorPoints, minSepMinor)) continue
             if (highway != null && distPointToPolyline(seed, highway.points) < 2.2f) continue
             val raw = traceBidirectional(
-                seed, isMajor = false, stepSize, maxSteps, urbanRadius,
+                seed, isMajor = false, stepSize, maxSteps, roadMargin,
                 minorPoints, minSepMinor * 0.80f, highway, 0.50f, junctionsOut
             )
             if (raw.size >= 4) {
@@ -263,15 +252,19 @@ class TensorField(
         val len = hypot(dx, dz).coerceAtLeast(1f)
         val nx = -dz / len
         val nz = dx / len
-        val bendAmp = (0.12f + rng.nextFloat() * 0.16f) * len * (if (rng.nextBoolean()) 1f else -1f)
-        val waveFreq = 1.0f + rng.nextFloat() * 0.7f
+        val bendAmp = (0.10f + rng.nextFloat() * 0.14f) * len * (if (rng.nextBoolean()) 1f else -1f)
+        val waveFreq = 1.0f + rng.nextFloat() * 0.6f
 
         for (i in 0..segments) {
             val t = i.toFloat() / segments.toFloat()
             val bend = sin(t * Math.PI.toFloat() * waveFreq) * bendAmp * sin(t * Math.PI.toFloat())
-            val px = (start.x + dx * t + nx * bend).coerceIn(-halfExtent + 1.8f, halfExtent - 1.8f)
-            val pz = (start.z + dz * t + nz * bend).coerceIn(-halfExtent + 1.8f, halfExtent - 1.8f)
-            pts.add(Vec2(px, pz))
+            val px = start.x + dx * t + nx * bend
+            val pz = start.z + dz * t + nz * bend
+            if (plate.contains(px, pz, margin = 1.5f)) {
+                pts.add(Vec2(px, pz))
+            } else {
+                pts.add(Vec2(start.x + dx * t, start.z + dz * t))
+            }
         }
         return RoadPolyline(smoothPolyline(pts, iterations = 2), isMajor = false, isSpur = true)
     }
@@ -281,7 +274,7 @@ class TensorField(
         isMajor: Boolean,
         step: Float,
         maxSteps: Int,
-        urbanRadius: Float,
+        margin: Float,
         existingPoints: List<Vec2>,
         stopDist: Float,
         highway: RoadPolyline?,
@@ -290,11 +283,11 @@ class TensorField(
     ): List<Vec2> {
         val initDir = sampleDirection(seed.x, seed.z, isMajor)
         val forward = traceOneWay(
-            seed, initDir, isMajor, step, maxSteps / 2, urbanRadius,
+            seed, initDir, isMajor, step, maxSteps / 2, margin,
             existingPoints, stopDist, highway, streetHalfW, junctionsOut
         )
         val backward = traceOneWay(
-            seed, Vec2(-initDir.x, -initDir.z), isMajor, step, maxSteps / 2, urbanRadius,
+            seed, Vec2(-initDir.x, -initDir.z), isMajor, step, maxSteps / 2, margin,
             existingPoints, stopDist, highway, streetHalfW, junctionsOut
         )
         val combined = ArrayList<Vec2>(backward.size + forward.size)
@@ -311,7 +304,7 @@ class TensorField(
         isMajor: Boolean,
         step: Float,
         maxSteps: Int,
-        urbanRadius: Float,
+        margin: Float,
         existingPoints: List<Vec2>,
         stopDist: Float,
         highway: RoadPolyline?,
@@ -321,7 +314,6 @@ class TensorField(
         val pts = mutableListOf(start)
         var cur = start
         var prevDir = startDir
-        val mapLimit = halfExtent - 2.2f
 
         for (i in 0 until maxSteps) {
             val next = rk4Step(cur, prevDir, isMajor, step)
@@ -338,11 +330,9 @@ class TensorField(
                 }
             }
 
-            val distCore = hypot(next.x - denseCoreCenter.x, next.z - denseCoreCenter.z)
-            if (distCore > urbanRadius ||
-                next.x < -mapLimit || next.x > mapLimit ||
-                next.z < -mapLimit || next.z > mapLimit
-            ) {
+            if (!plate.containsInCoverage(next.x, next.z, margin)) {
+                val snapped = plate.clipSegmentToBoundary(cur, next, useCoverage = true, margin = margin)
+                pts.add(snapped)
                 break
             }
 
